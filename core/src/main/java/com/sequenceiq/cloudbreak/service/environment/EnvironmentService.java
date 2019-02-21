@@ -23,7 +23,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.stereotype.Service;
 
-import com.sequenceiq.ambari.client.AmbariClient;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.requests.EnvironmentAttachV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.requests.EnvironmentChangeCredentialV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.requests.EnvironmentDetachV4Request;
@@ -36,6 +35,7 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.responses.SimpleEnv
 import com.sequenceiq.cloudbreak.authorization.WorkspaceResource;
 import com.sequenceiq.cloudbreak.cloud.model.CloudRegions;
 import com.sequenceiq.cloudbreak.cloud.model.Coordinate;
+import com.sequenceiq.cloudbreak.cluster.api.DatalakeConfigApi;
 import com.sequenceiq.cloudbreak.controller.exception.BadRequestException;
 import com.sequenceiq.cloudbreak.controller.validation.ValidationResult;
 import com.sequenceiq.cloudbreak.controller.validation.ValidationResult.ValidationResultBuilder;
@@ -66,7 +66,6 @@ import com.sequenceiq.cloudbreak.service.KubernetesConfigService;
 import com.sequenceiq.cloudbreak.service.TransactionService;
 import com.sequenceiq.cloudbreak.service.TransactionService.TransactionExecutionException;
 import com.sequenceiq.cloudbreak.service.TransactionService.TransactionRuntimeExecutionException;
-import com.sequenceiq.cloudbreak.service.cluster.ambari.AmbariClientProvider;
 import com.sequenceiq.cloudbreak.service.credential.CredentialPrerequisiteService;
 import com.sequenceiq.cloudbreak.service.datalake.DatalakeResourcesService;
 import com.sequenceiq.cloudbreak.service.kerberos.KerberosService;
@@ -74,6 +73,7 @@ import com.sequenceiq.cloudbreak.service.ldapconfig.LdapConfigService;
 import com.sequenceiq.cloudbreak.service.platform.PlatformParameterService;
 import com.sequenceiq.cloudbreak.service.proxy.ProxyConfigService;
 import com.sequenceiq.cloudbreak.service.rdsconfig.RdsConfigService;
+import com.sequenceiq.cloudbreak.service.sharedservice.DatalakeConfigApiConnector;
 import com.sequenceiq.cloudbreak.service.sharedservice.DatalakeConfigProvider;
 import com.sequenceiq.cloudbreak.service.sharedservice.ServiceDescriptorDefinitionProvider;
 import com.sequenceiq.cloudbreak.service.stack.StackApiViewService;
@@ -138,13 +138,13 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
     private DatalakeConfigProvider datalakeConfigProvider;
 
     @Inject
-    private AmbariClientProvider ambariClientProvider;
-
-    @Inject
     private ClusterCreationEnvironmentValidator clusterCreationEnvironmentValidator;
 
     @Inject
     private DatalakeResourcesService datalakeResourcesService;
+
+    @Inject
+    private DatalakeConfigApiConnector datalakeConfigApiConnector;
 
     public Set<SimpleEnvironmentV4Response> listByWorkspaceId(Long workspaceId) {
         Set<SimpleEnvironmentV4Response> environmentResponses = environmentViewService.findAllByWorkspaceId(workspaceId).stream()
@@ -463,12 +463,13 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
                     Set<RDSConfig> rdssConfigs = CollectionUtils.isEmpty(registerDatalakeRequest.getDatabaseNames()) ? null
                             : rdsConfigService.findByNamesInWorkspace(registerDatalakeRequest.getDatabaseNames(), workspaceId);
                     URL ambariUrl = new URL(datalakeAmbariUrl);
-                    AmbariClient ambariClient = ambariClientProvider.getAmbariClient(ambariUrl, datalakeAmbariUser, datalakeAmbariPassowrd);
+
                     Map<String, Map<String, String>> serviceSecretParamMap = isEmpty(registerDatalakeRequest.getRangerAdminPassword())
                             ? new HashMap<>() : Map.ofEntries(Map.entry(ServiceDescriptorDefinitionProvider.RANGER_SERVICE, Map.ofEntries(
                             Map.entry(ServiceDescriptorDefinitionProvider.RANGER_ADMIN_PWD_KEY, registerDatalakeRequest.getRangerAdminPassword()))));
+                    DatalakeConfigApi connector = datalakeConfigApiConnector.getConnector(ambariUrl, datalakeAmbariUser, datalakeAmbariPassowrd);
                     DatalakeResources datalakeResources = datalakeConfigProvider.collectAndStoreDatalakeResources(environmentName, envView, datalakeAmbariUrl,
-                            ambariUrl.getHost(), ambariUrl.getHost(), ambariClient, serviceSecretParamMap, ldapConfig, kerberosConfig, rdssConfigs,
+                            ambariUrl.getHost(), ambariUrl.getHost(), connector, serviceSecretParamMap, ldapConfig, kerberosConfig, rdssConfigs,
                             environment.getWorkspace());
                     environment.getDatalakeResources().add(datalakeResources);
                     return conversionService.convert(environmentRepository.save(environment), DetailedEnvironmentV4Response.class);
