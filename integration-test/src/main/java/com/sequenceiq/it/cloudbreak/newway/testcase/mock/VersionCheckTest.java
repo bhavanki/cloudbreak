@@ -1,15 +1,12 @@
 package com.sequenceiq.it.cloudbreak.newway.testcase.mock;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
 import com.sequenceiq.it.cloudbreak.newway.action.version.VersionCheckTestAction;
+import com.sequenceiq.it.cloudbreak.newway.assertion.CommonAssert;
+import com.sequenceiq.it.cloudbreak.newway.assertion.version.VersionCheckAssertion;
 import com.sequenceiq.it.cloudbreak.newway.context.MockedTestContext;
 import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
 import com.sequenceiq.it.cloudbreak.newway.entity.version.VersionCheckTestDto;
@@ -28,7 +25,8 @@ public class VersionCheckTest extends AbstractIntegrationTest {
                 .given(VersionCheckTestDto.class)
                 .withVersion(invalidVersionValue)
                 .when(VersionCheckTestAction::getCheckClientVersion)
-                .then(this::versionIsNotOk)
+                .then(CommonAssert::responseExists)
+                .then(VersionCheckAssertion::versionIsNotOk)
                 .validate();
     }
 
@@ -38,15 +36,6 @@ public class VersionCheckTest extends AbstractIntegrationTest {
                 {getBean(MockedTestContext.class), ""},
                 {getBean(MockedTestContext.class), "someOtherInvalidValue"}
         };
-    }
-
-    private VersionCheckTestDto versionIsNotOk(TestContext testContext, VersionCheckTestDto testDto, CloudbreakClient cloudbreakClient) {
-        assertNotNull(testDto);
-        assertNotNull("Response should be filled!", testDto.getResponse());
-        assertFalse(testDto.getResponse().isVersionCheckOk());
-        assertNotNull("Response message should be filled!", testDto.getResponse().getMessage());
-        assertTrue(testDto.getResponse().getMessage().contains("not compatible"));
-        return testDto;
     }
 
 }

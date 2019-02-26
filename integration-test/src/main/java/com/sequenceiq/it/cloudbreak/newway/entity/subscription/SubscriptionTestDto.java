@@ -9,7 +9,6 @@ import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
 import com.sequenceiq.it.cloudbreak.newway.Prototype;
 import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
 import com.sequenceiq.it.cloudbreak.newway.entity.AbstractCloudbreakEntity;
-import com.sequenceiq.it.cloudbreak.newway.entity.CloudbreakEntity;
 
 @Prototype
 public class SubscriptionTestDto extends AbstractCloudbreakEntity<SubscriptionV4Request, SubscriptionV4Response, SubscriptionTestDto> {
@@ -30,7 +29,7 @@ public class SubscriptionTestDto extends AbstractCloudbreakEntity<SubscriptionV4
     }
 
     @Override
-    public CloudbreakEntity valid() {
+    public SubscriptionTestDto valid() {
         return withEndpointUrl("https://localhost//");
     }
 

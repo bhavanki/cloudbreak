@@ -9,7 +9,6 @@ import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
 import com.sequenceiq.it.cloudbreak.newway.Prototype;
 import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
 import com.sequenceiq.it.cloudbreak.newway.entity.AbstractCloudbreakEntity;
-import com.sequenceiq.it.cloudbreak.newway.entity.CloudbreakEntity;
 
 @Prototype
 public class RepoConfigValidationTestDto extends AbstractCloudbreakEntity<RepoConfigValidationV4Request, RepoConfigValidationV4Response,
@@ -57,7 +56,7 @@ public class RepoConfigValidationTestDto extends AbstractCloudbreakEntity<RepoCo
     }
 
     @Override
-    public CloudbreakEntity valid() {
+    public RepoConfigValidationTestDto valid() {
         return this;
     }
 

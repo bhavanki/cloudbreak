@@ -8,7 +8,6 @@ import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
 import com.sequenceiq.it.cloudbreak.newway.Prototype;
 import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
 import com.sequenceiq.it.cloudbreak.newway.entity.AbstractCloudbreakEntity;
-import com.sequenceiq.it.cloudbreak.newway.entity.CloudbreakEntity;
 
 @Prototype
 public class SecurityRulesTestDto extends AbstractCloudbreakEntity<Object, SecurityRulesV4Response, SecurityRulesTestDto> {
@@ -31,7 +30,7 @@ public class SecurityRulesTestDto extends AbstractCloudbreakEntity<Object, Secur
     }
 
     @Override
-    public CloudbreakEntity valid() {
+    public SecurityRulesTestDto valid() {
         return withKnoxEnabled(false);
     }
 

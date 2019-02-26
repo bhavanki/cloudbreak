@@ -8,7 +8,6 @@ import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
 import com.sequenceiq.it.cloudbreak.newway.Prototype;
 import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
 import com.sequenceiq.it.cloudbreak.newway.entity.AbstractCloudbreakEntity;
-import com.sequenceiq.it.cloudbreak.newway.entity.CloudbreakEntity;
 
 @Prototype
 public class DeploymentPreferencesTestDto extends AbstractCloudbreakEntity<Object, DeploymentPreferencesV4Response, DeploymentPreferencesTestDto> {
@@ -20,7 +19,7 @@ public class DeploymentPreferencesTestDto extends AbstractCloudbreakEntity<Objec
     }
 
     @Override
-    public CloudbreakEntity valid() {
+    public DeploymentPreferencesTestDto valid() {
         return this;
     }
 

@@ -8,7 +8,6 @@ import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
 import com.sequenceiq.it.cloudbreak.newway.Prototype;
 import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
 import com.sequenceiq.it.cloudbreak.newway.entity.AbstractCloudbreakEntity;
-import com.sequenceiq.it.cloudbreak.newway.entity.CloudbreakEntity;
 
 @Prototype
 public class StackMatrixTestDto extends AbstractCloudbreakEntity<Object, StackMatrixV4Response, StackMatrixTestDto> {
@@ -20,7 +19,7 @@ public class StackMatrixTestDto extends AbstractCloudbreakEntity<Object, StackMa
     }
 
     @Override
-    public CloudbreakEntity valid() {
+    public StackMatrixTestDto valid() {
         return this;
     }
 

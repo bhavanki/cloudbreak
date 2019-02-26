@@ -8,7 +8,6 @@ import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
 import com.sequenceiq.it.cloudbreak.newway.Prototype;
 import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
 import com.sequenceiq.it.cloudbreak.newway.entity.AbstractCloudbreakEntity;
-import com.sequenceiq.it.cloudbreak.newway.entity.CloudbreakEntity;
 
 @Prototype
 public class CloudStorageMatrixTestDto extends AbstractCloudbreakEntity<Object, CloudStorageSupportedV4Response, CloudStorageMatrixTestDto> {
@@ -31,7 +30,7 @@ public class CloudStorageMatrixTestDto extends AbstractCloudbreakEntity<Object, 
     }
 
     @Override
-    public CloudbreakEntity valid() {
+    public CloudStorageMatrixTestDto valid() {
         return withStackVersion("3.1");
     }
 

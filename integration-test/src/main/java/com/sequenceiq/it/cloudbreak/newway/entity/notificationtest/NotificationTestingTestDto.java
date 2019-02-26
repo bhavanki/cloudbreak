@@ -7,7 +7,6 @@ import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
 import com.sequenceiq.it.cloudbreak.newway.Prototype;
 import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
 import com.sequenceiq.it.cloudbreak.newway.entity.AbstractCloudbreakEntity;
-import com.sequenceiq.it.cloudbreak.newway.entity.CloudbreakEntity;
 
 @Prototype
 public class NotificationTestingTestDto extends AbstractCloudbreakEntity<Object, Object, NotificationTestingTestDto> {
@@ -19,7 +18,7 @@ public class NotificationTestingTestDto extends AbstractCloudbreakEntity<Object,
     }
 
     @Override
-    public CloudbreakEntity valid() {
+    public NotificationTestingTestDto valid() {
         return this;
     }
 

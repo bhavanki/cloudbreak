@@ -1,7 +1,6 @@
 package com.sequenceiq.it.cloudbreak.newway.testcase.mock;
 
 import static com.sequenceiq.it.cloudbreak.newway.context.RunningParameter.key;
-import static org.junit.Assert.assertNotNull;
 
 import javax.ws.rs.BadRequestException;
 
@@ -9,8 +8,9 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
 import com.sequenceiq.it.cloudbreak.newway.action.subscription.SubscriptionTestAction;
+import com.sequenceiq.it.cloudbreak.newway.assertion.CommonAssert;
+import com.sequenceiq.it.cloudbreak.newway.assertion.subscription.SubscriptionAssertion;
 import com.sequenceiq.it.cloudbreak.newway.context.MockedTestContext;
 import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
 import com.sequenceiq.it.cloudbreak.newway.entity.subscription.SubscriptionTestDto;
@@ -33,8 +33,8 @@ public class SubscriptionTest extends AbstractIntegrationTest {
                 .given(SubscriptionTestDto.class)
                 .withEndpointUrl(endpointUrl)
                 .when(SubscriptionTestAction::getSubscribe)
-                .then(this::responseExists)
-                .then(this::idExists)
+                .then(CommonAssert::responseExists)
+                .then(SubscriptionAssertion::idExists)
                 .validate();
     }
 
@@ -66,17 +66,6 @@ public class SubscriptionTest extends AbstractIntegrationTest {
                 {testContext, "https://1.1.1.1"},
                 {testContext, "https://1.1.1.1://"}
         };
-    }
-
-    private SubscriptionTestDto responseExists(TestContext tc, SubscriptionTestDto entity, CloudbreakClient cc) {
-        assertNotNull(entity);
-        assertNotNull(entity.getResponse());
-        return entity;
-    }
-
-    private SubscriptionTestDto idExists(TestContext tc, SubscriptionTestDto entity, CloudbreakClient cc) {
-        assertNotNull(entity.getResponse().getId());
-        return entity;
     }
 
 }

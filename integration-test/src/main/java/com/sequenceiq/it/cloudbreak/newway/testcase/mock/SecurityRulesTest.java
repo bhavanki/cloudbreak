@@ -1,14 +1,12 @@
 package com.sequenceiq.it.cloudbreak.newway.testcase.mock;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
 import com.sequenceiq.it.cloudbreak.newway.action.securityrule.SecurityRulesTestAction;
+import com.sequenceiq.it.cloudbreak.newway.assertion.CommonAssert;
+import com.sequenceiq.it.cloudbreak.newway.assertion.securityrule.SecurityRulesAssertions;
 import com.sequenceiq.it.cloudbreak.newway.context.MockedTestContext;
 import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
 import com.sequenceiq.it.cloudbreak.newway.entity.securityrule.SecurityRulesTestDto;
@@ -29,9 +27,9 @@ public class SecurityRulesTest extends AbstractIntegrationTest {
                 .given(SecurityRulesTestDto.class)
                 .withKnoxEnabled(knoxEnabled)
                 .when(SecurityRulesTestAction::getDefaultSecurityRules)
-                .then(this::responseExist)
-                .then(this::coreIsNotEmpty)
-                .then(this::gatewayIsNotEmpty)
+                .then(CommonAssert::responseExists)
+                .then(SecurityRulesAssertions::coreIsNotEmpty)
+                .then(SecurityRulesAssertions::gatewayIsNotEmpty)
                 .validate();
     }
 
@@ -43,24 +41,6 @@ public class SecurityRulesTest extends AbstractIntegrationTest {
                 {testContext, true},
                 {testContext, null}
         };
-    }
-
-    private SecurityRulesTestDto responseExist(TestContext tc, SecurityRulesTestDto entity, CloudbreakClient cc) {
-        assertNotNull(entity);
-        assertNotNull(entity.getResponse());
-        return entity;
-    }
-
-    private SecurityRulesTestDto coreIsNotEmpty(TestContext tc, SecurityRulesTestDto entity, CloudbreakClient cc) {
-        assertNotNull(entity.getResponse().getCore());
-        assertFalse(entity.getResponse().getCore().isEmpty());
-        return entity;
-    }
-
-    private SecurityRulesTestDto gatewayIsNotEmpty(TestContext tc, SecurityRulesTestDto entity, CloudbreakClient cc) {
-        assertNotNull(entity.getResponse().getGateway());
-        assertFalse(entity.getResponse().getGateway().isEmpty());
-        return entity;
     }
 
 }
