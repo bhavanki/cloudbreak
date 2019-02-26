@@ -23,7 +23,6 @@ import org.testng.annotations.Test;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.connector.responses.DiskV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.util.responses.VmTypeV4Response;
-import com.sequenceiq.it.cloudbreak.newway.entity.clusterdefinition.ClusterDefinition;
 import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
 import com.sequenceiq.it.cloudbreak.newway.CloudbreakTest;
 import com.sequenceiq.it.cloudbreak.newway.Credential;
@@ -66,14 +65,14 @@ public class RecommendationsTests extends CloudbreakTest {
 
     private void createClusterDefinition() throws Exception {
         given(CloudbreakClient.created());
-        given(ClusterDefinition.request().withName(VALID_CD_NAME).withDescription(CD_DESCRIPTION).withClusterDefinition(getClusterDefinitionFile()));
-        when(ClusterDefinition.post());
+//        given(ClusterDefinition.request().withName(VALID_CD_NAME).withDescription(CD_DESCRIPTION).withClusterDefinition(getClusterDefinitionFile()));
+//        when(ClusterDefinition.post());
     }
 
     private void deleteClusterDefinition() throws Exception {
         given(CloudbreakClient.created());
-        given(ClusterDefinition.request().withName(VALID_CD_NAME));
-        when(ClusterDefinition.delete());
+//        given(ClusterDefinition.request().withName(VALID_CD_NAME));
+//        when(ClusterDefinition.delete());
     }
 
     private void deleteCredential() throws Exception {
