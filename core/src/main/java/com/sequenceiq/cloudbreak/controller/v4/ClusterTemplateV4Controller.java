@@ -12,6 +12,7 @@ import org.springframework.stereotype.Controller;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.clustertemplate.ClusterTemplateV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.clustertemplate.requests.ClusterTemplateV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.clustertemplate.responses.ClusterTemplateV4Response;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.clustertemplate.responses.ClusterTemplateV4Responses;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.clustertemplate.responses.ClusterTemplateViewV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.clustertemplate.responses.ClusterTemplateViewV4Responses;
 import com.sequenceiq.cloudbreak.api.util.ConverterUtil;
@@ -19,8 +20,8 @@ import com.sequenceiq.cloudbreak.domain.stack.cluster.ClusterTemplate;
 import com.sequenceiq.cloudbreak.service.TransactionService;
 import com.sequenceiq.cloudbreak.service.TransactionService.TransactionExecutionException;
 import com.sequenceiq.cloudbreak.service.TransactionService.TransactionRuntimeExecutionException;
+import com.sequenceiq.cloudbreak.service.blueprint.BlueprintService;
 import com.sequenceiq.cloudbreak.service.template.ClusterTemplateService;
-import com.sequenceiq.cloudbreak.service.template.ClusterTemplateViewService;
 import com.sequenceiq.cloudbreak.util.WorkspaceEntityType;
 
 @Controller
@@ -35,7 +36,7 @@ public class ClusterTemplateV4Controller extends NotificationController implemen
     private ClusterTemplateService clusterTemplateService;
 
     @Inject
-    private ClusterTemplateViewService clusterTemplateViewService;
+    private BlueprintService blueprintService;
 
     @Inject
     private TransactionService transactionService;
@@ -49,9 +50,10 @@ public class ClusterTemplateV4Controller extends NotificationController implemen
     @Override
     public ClusterTemplateViewV4Responses list(Long workspaceId) {
         try {
+            blueprintService.updateDefaultBlueprints(workspaceId);
             clusterTemplateService.updateDefaultClusterTemplates(workspaceId);
             Set<ClusterTemplateViewV4Response> responses = transactionService.required(() ->
-                    converterUtil.convertAllAsSet(clusterTemplateViewService.findAllByWorkspaceId(workspaceId), ClusterTemplateViewV4Response.class));
+                    converterUtil.convertAllAsSet(clusterTemplateService.getAllAvailableViewInWorkspace(workspaceId), ClusterTemplateViewV4Response.class));
             return new ClusterTemplateViewV4Responses(responses);
         } catch (TransactionExecutionException e) {
             throw new TransactionRuntimeExecutionException(e);
@@ -72,5 +74,11 @@ public class ClusterTemplateV4Controller extends NotificationController implemen
     public ClusterTemplateV4Response delete(Long workspaceId, String name) {
         ClusterTemplate clusterTemplate = clusterTemplateService.delete(name, workspaceId);
         return converterUtil.convert(clusterTemplate, ClusterTemplateV4Response.class);
+    }
+
+    @Override
+    public ClusterTemplateV4Responses deleteMultiple(Long workspaceId, Set<String> names) {
+        Set<ClusterTemplate> clusterTemplates = clusterTemplateService.deleteMultiple(names, workspaceId);
+        return new ClusterTemplateV4Responses(converterUtil.convertAllAsSet(clusterTemplates, ClusterTemplateV4Response.class));
     }
 }

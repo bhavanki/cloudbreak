@@ -21,7 +21,7 @@ import spark.Service;
 
 public class ClouderaManagerMock extends AbstractModelMock {
 
-    public static final String API_ROOT = "/api/v30";
+    public static final String API_ROOT = "/api/v31";
 
     public static final String ECHO = API_ROOT + "/tools/echo";
 
@@ -39,11 +39,17 @@ public class ClouderaManagerMock extends AbstractModelMock {
 
     public static final String HOSTS = API_ROOT + "/hosts";
 
+    public static final String BEGIN_FREE_TRIAL = API_ROOT + "/cm/trial/begin";
+
     private DynamicRouteStack dynamicRouteStack;
 
     public ClouderaManagerMock(Service sparkService, DefaultModel defaultModel) {
         super(sparkService, defaultModel);
         dynamicRouteStack = new DynamicRouteStack(sparkService, defaultModel);
+    }
+
+    public DynamicRouteStack getDynamicRouteStack() {
+        return dynamicRouteStack;
     }
 
     public void addClouderaManagerMappings() {
@@ -56,6 +62,7 @@ public class ClouderaManagerMock extends AbstractModelMock {
         postStopCommand();
         getHosts();
         postStartCommand();
+        postBeginTrial();
     }
 
     private void getEcho() {
@@ -104,6 +111,10 @@ public class ClouderaManagerMock extends AbstractModelMock {
     private void postStartCommand() {
         dynamicRouteStack.post(COMMANDS_START,
                 (request, response) -> new ApiCommand().id(BigDecimal.ONE).active(Boolean.TRUE).name("Start"));
+    }
+
+    private void postBeginTrial() {
+        dynamicRouteStack.post(BEGIN_FREE_TRIAL, (request, response) -> null);
     }
 
     private void getHosts() {

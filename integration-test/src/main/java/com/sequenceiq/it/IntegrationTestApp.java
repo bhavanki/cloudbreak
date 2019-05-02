@@ -35,14 +35,16 @@ import org.testng.xml.SuiteXmlParser;
 import org.testng.xml.XmlSuite;
 import org.uncommons.reportng.JUnitXMLReporter;
 
+import com.google.common.collect.ImmutableMap;
 import com.sequenceiq.it.cloudbreak.config.ITProps;
+import com.sequenceiq.it.cloudbreak.newway.cloud.v2.aws.AwsProperties;
 import com.sequenceiq.it.cloudbreak.newway.listener.ReportListener;
 import com.sequenceiq.it.cloudbreak.newway.logsearch.CustomHTMLReporter;
 
 @EnableAutoConfiguration(exclude = {DataSourceAutoConfiguration.class, DataSourceTransactionManagerAutoConfiguration.class,
         HibernateJpaAutoConfiguration.class})
 @ComponentScan(basePackages = "com.sequenceiq.it")
-@EnableConfigurationProperties(ITProps.class)
+@EnableConfigurationProperties({ITProps.class, AwsProperties.class})
 public class IntegrationTestApp implements CommandLineRunner {
     private static final Logger LOG = LoggerFactory.getLogger(IntegrationTestApp.class);
 
@@ -52,7 +54,7 @@ public class IntegrationTestApp implements CommandLineRunner {
 
     private static final IFileParser<XmlSuite> DEFAULT_FILE_PARSER = XML_PARSER;
 
-    @Value("${integrationtest.testsuite.threadPoolSize}")
+    @Value("${integrationtest.testsuite.threadPoolSize:8}")
     private int suiteThreadPoolSize;
 
     @Value("${integrationtest.command:}")
@@ -67,6 +69,12 @@ public class IntegrationTestApp implements CommandLineRunner {
     @Value("${integrationtest.outputdir:.}")
     private String outputDirectory;
 
+    @Value("${integrationtest.threadCount:2}")
+    private int threadCount;
+
+    @Value("${integrationtest.parallel:FALSE}")
+    private String parallel;
+
     @Inject
     private TestNG testng;
 
@@ -77,8 +85,10 @@ public class IntegrationTestApp implements CommandLineRunner {
     private ITProps itProps;
 
     public static void main(String[] args) {
+        long start = System.currentTimeMillis();
         SpringApplication springApp = new SpringApplication(IntegrationTestApp.class);
         springApp.setWebApplicationType(WebApplicationType.NONE);
+        springApp.setDefaultProperties(ImmutableMap.of("spring.main.allow-bean-definition-overriding", "true"));
         try {
             ConfigurableApplicationContext context = springApp.run(args);
             LOG.info("Closing Spring test context.");
@@ -90,6 +100,7 @@ public class IntegrationTestApp implements CommandLineRunner {
             threadSet.stream().forEach(t -> LOG.info("Runnning threads: {}", t.getName()));
             System.exit(1);
         }
+        LOG.info("run successfully: {}", System.currentTimeMillis() - start);
         System.exit(0);
     }
 
@@ -129,6 +140,7 @@ public class IntegrationTestApp implements CommandLineRunner {
             case "suiteurls":
                 List<String> suitePathes = itProps.getSuiteFiles();
                 testng.setXmlSuites(loadSuites(suitePathes));
+
                 break;
             default:
                 LOG.info("Unknown command: {}", itCommand);
@@ -169,17 +181,17 @@ public class IntegrationTestApp implements CommandLineRunner {
         return providerTests;
     }
 
-    private List<XmlSuite> loadSuiteResources(Iterable<Resource> suitePathes) throws IOException {
+    private List<XmlSuite> loadSuiteResources(Iterable<Resource> suitePaths) throws IOException {
         List<XmlSuite> suites = new ArrayList<>();
-        for (Resource suite : suitePathes) {
+        for (Resource suite : suitePaths) {
             suites.add(loadSuite(suite.getURL().toString(), suite));
         }
         return suites;
     }
 
-    private List<XmlSuite> loadSuites(Iterable<String> suitePathes) throws IOException {
+    private List<XmlSuite> loadSuites(Iterable<String> suitePaths) throws IOException {
         List<XmlSuite> suites = new ArrayList<>();
-        for (String suitePath : suitePathes) {
+        for (String suitePath : suitePaths) {
             suites.add(loadSuite(suitePath));
         }
         LOG.info("parsed suites: {}", suites.size());
@@ -199,7 +211,11 @@ public class IntegrationTestApp implements CommandLineRunner {
     private XmlSuite loadSuite(String suitePath, InputStreamSource resource) throws IOException {
         IFileParser<XmlSuite> parser = getParser(suitePath);
         try (InputStream inputStream = resource.getInputStream()) {
-            return parser.parse(suitePath, inputStream, true);
+            XmlSuite xmlSuite = parser.parse(suitePath, inputStream, true);
+            xmlSuite.setParallel(XmlSuite.ParallelMode.valueOf(parallel.toUpperCase()));
+            xmlSuite.setThreadCount(threadCount);
+            LOG.info("Test are running in: {} type of parallel mode", parallel.toUpperCase());
+            return xmlSuite;
         }
     }
 

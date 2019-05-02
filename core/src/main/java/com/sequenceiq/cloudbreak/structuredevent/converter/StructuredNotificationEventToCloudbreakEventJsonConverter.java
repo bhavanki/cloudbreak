@@ -24,8 +24,8 @@ public class StructuredNotificationEventToCloudbreakEventJsonConverter
             cloudbreakEvent.setCloud(notificationDetails.getCloud());
             cloudbreakEvent.setRegion(notificationDetails.getRegion());
             cloudbreakEvent.setAvailabilityZone(notificationDetails.getAvailabiltyZone());
-            cloudbreakEvent.setClusterDefinitionId(notificationDetails.getClusterDefinitionId());
-            cloudbreakEvent.setClusterDefinitionName(notificationDetails.getClusterDefinitionName());
+            cloudbreakEvent.setBlueprintId(notificationDetails.getBlueprintId());
+            cloudbreakEvent.setBlueprintName(notificationDetails.getBlueprintName());
             cloudbreakEvent.setClusterId(notificationDetails.getClusterId());
             cloudbreakEvent.setClusterName(notificationDetails.getClusterName());
             cloudbreakEvent.setStackId(notificationDetails.getStackId());
@@ -54,7 +54,7 @@ public class StructuredNotificationEventToCloudbreakEventJsonConverter
         cloudbreakEvent.setEventTimestamp(operationDetails.getTimestamp());
         cloudbreakEvent.setUserId(operationDetails.getUserId());
         cloudbreakEvent.setWorkspaceId(operationDetails.getWorkspaceId());
-        cloudbreakEvent.setWorkspaceId(operationDetails.getWorkspaceId());
+        cloudbreakEvent.setTenantName(operationDetails.getTenant());
 
         if (source.getLdapNotificationDetails() != null) {
             cloudbreakEvent.setLdapDetails(source.getLdapNotificationDetails().getLdapDetails());

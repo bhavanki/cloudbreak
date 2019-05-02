@@ -2,7 +2,7 @@ version: 2
 jobs:
   build:
     docker:
-      - image: circleci/openjdk:10-jdk
+      - image: circleci/openjdk:11-jdk
     steps:
       - checkout
       - restore_cache:
@@ -24,11 +24,11 @@ jobs:
             - mock-caas/build/libs/mock-caas.jar
             - integration-test/build/libs/cloudbreak-integration-test.jar
 
-  code-quality-check-checkstyle-test:
+  checkstyle-test:
     docker:
-      - image: circleci/openjdk:10-jdk
+      - image: circleci/openjdk:11-jdk
     environment:
-      _JAVA_OPTIONS: "-Xmx2048m"
+      _JAVA_OPTIONS: "-Xmx1536m"
     steps:
       - checkout
       - attach_workspace:
@@ -48,11 +48,11 @@ jobs:
       - store_artifacts:
           path: ~/checkstyle-test
 
-  code-quality-check-checkstyle-main:
+  checkstyle-main:
     docker:
-      - image: circleci/openjdk:10-jdk
+      - image: circleci/openjdk:11-jdk
     environment:
-      _JAVA_OPTIONS: "-Xmx2048m"
+      _JAVA_OPTIONS: "-Xmx1536m"
     steps:
       - checkout
       - attach_workspace:
@@ -72,11 +72,11 @@ jobs:
       - store_artifacts:
           path: ~/checkstyle
 
-  code-quality-check-spotbugs-main:
+  spotbugs-main:
     docker:
-      - image: circleci/openjdk:10-jdk
+      - image: circleci/openjdk:11-jdk
     environment:
-      _JAVA_OPTIONS: "-Xmx2048m"
+      _JAVA_OPTIONS: "-Xmx1536m"
     steps:
       - checkout
       - attach_workspace:
@@ -96,11 +96,11 @@ jobs:
       - store_artifacts:
           path: ~/spotbugs-main
 
-  code-quality-check-spotbugs-test:
+  spotbugs-test:
     docker:
-      - image: circleci/openjdk:10-jdk
+      - image: circleci/openjdk:11-jdk
     environment:
-      _JAVA_OPTIONS: "-Xmx2048m"
+      _JAVA_OPTIONS: "-Xmx1536m"
     steps:
       - checkout
       - attach_workspace:
@@ -121,12 +121,10 @@ jobs:
           path: ~/spotbugs-test
 
   unit-test:
-    environment:
-      CC_TEST_REPORTER_ID: CC_TEST_REPORTER_ID
     docker:
-      - image: circleci/openjdk:10-jdk
+      - image: circleci/openjdk:11-jdk
     environment:
-      _JAVA_OPTIONS: "-Xmx2048m"
+      _JAVA_OPTIONS: "-XX:+UseContainerSupport"
     steps:
       - checkout
       - attach_workspace:
@@ -148,7 +146,7 @@ jobs:
           command: JACOCO_SOURCE_PATH=core/src/main/java ./cc-test-reporter format-coverage ./core/build/reports/jacoco/test/jacocoTestReport.xml --input-type jacoco
       - run:
           name: Upload code climate report
-          command: ./cc-test-reporter upload-coverage -r $CC_TEST_REPORTER_ID
+          command: if [[ -n "${CC_TEST_REPORTER_ID}" ]]; then echo "Upload coverage"; ./cc-test-reporter upload-coverage -r $CC_TEST_REPORTER_ID; else echo "Skipping upload-coverage"; fi
           when: on_success
       - run:
           name: Save test results
@@ -163,6 +161,8 @@ jobs:
 
   integration-test:
     machine: true
+    environment:
+      _JAVA_OPTIONS: "-Xmx1536m"
     steps:
       - checkout
       - attach_workspace:
@@ -176,10 +176,10 @@ jobs:
       - run:
           name: integration-test
           command: cd integration-test && make without-build && make revert-db
-          no_output_timeout: 35m
+          no_output_timeout: 120m
       - run:
           name: stop-containers and get cloudbreak log
-          command: make stop-containers
+          command: cd integration-test && make stop-containers
           when: on_fail
       - run:
           name: Save test results
@@ -205,22 +205,50 @@ workflows:
   version: 2
   build_and_test:
     jobs:
-      - build
-      - code-quality-check-spotbugs-main:
+      - build:
+          filters:
+            branches:
+              ignore:
+                - master
+      - spotbugs-main:
           requires:
             - build
-      - code-quality-check-spotbugs-test:
+          filters:
+            branches:
+              ignore:
+                - master
+      - spotbugs-test:
           requires:
             - build
-      - code-quality-check-checkstyle-main:
+          filters:
+            branches:
+              ignore:
+                - master
+      - checkstyle-main:
           requires:
             - build
-      - code-quality-check-checkstyle-test:
+          filters:
+            branches:
+              ignore:
+                - master
+      - checkstyle-test:
           requires:
             - build
+          filters:
+            branches:
+              ignore:
+                - master
       - unit-test:
           requires:
             - build
+          filters:
+            branches:
+              ignore:
+                - master
       - integration-test:
           requires:
             - build
+          filters:
+            branches:
+              ignore:
+                - master

@@ -7,7 +7,6 @@ base:
     - hdp.repo
 
   '*':
-    - network
     - nodes.hosts
     - discovery.init
     - recipes.init
@@ -22,6 +21,10 @@ base:
     - sssd.ad
 
   'G@roles:ipa_member or G@roles:ad_leave':
+    - match: compound
+    - sssd.ipa
+
+  'G@roles:ipa_leave':
     - match: compound
     - sssd.ipa
 
@@ -44,9 +47,13 @@ base:
 
   'roles:manager_server':
     - match: grain
+{% if salt['file.file_exists']('/srv/pillar/cloudera-manager/license.sls') %}
+    - cloudera-manager.license
+{% endif %}
     - cloudera-manager.repo
     - cloudera-manager.database
     - gateway.init
+    - gateway.ldap
 
   'roles:ambari_server*':
     - match: grain

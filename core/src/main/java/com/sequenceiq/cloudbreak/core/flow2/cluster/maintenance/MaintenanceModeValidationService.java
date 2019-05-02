@@ -22,22 +22,21 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.DetailedStackStatus;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status;
 import com.sequenceiq.cloudbreak.cloud.event.model.EventStatus;
 import com.sequenceiq.cloudbreak.cloud.model.AmbariRepo;
 import com.sequenceiq.cloudbreak.cloud.model.Image;
 import com.sequenceiq.cloudbreak.cloud.model.component.StackRepoDetails;
+import com.sequenceiq.cloudbreak.cluster.service.ClusterComponentConfigProvider;
 import com.sequenceiq.cloudbreak.core.CloudbreakImageCatalogException;
 import com.sequenceiq.cloudbreak.core.CloudbreakImageNotFoundException;
 import com.sequenceiq.cloudbreak.core.flow2.CheckResult;
-import com.sequenceiq.cloudbreak.core.flow2.stack.FlowMessageService;
-import com.sequenceiq.cloudbreak.core.flow2.stack.Msg;
+import com.sequenceiq.cloudbreak.core.flow2.stack.CloudbreakFlowMessageService;
 import com.sequenceiq.cloudbreak.core.flow2.stack.image.update.StackImageUpdateService;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.json.JsonHelper;
+import com.sequenceiq.cloudbreak.message.Msg;
 import com.sequenceiq.cloudbreak.service.CloudbreakServiceException;
-import com.sequenceiq.cloudbreak.service.ClusterComponentConfigProvider;
-import com.sequenceiq.cloudbreak.service.ComponentConfigProvider;
+import com.sequenceiq.cloudbreak.service.ComponentConfigProviderService;
 import com.sequenceiq.cloudbreak.service.StackUpdater;
 import com.sequenceiq.cloudbreak.service.cluster.ClusterService;
 import com.sequenceiq.cloudbreak.service.image.ImageCatalogService;
@@ -49,7 +48,7 @@ public class MaintenanceModeValidationService {
     private static final Logger LOGGER = LoggerFactory.getLogger(MaintenanceModeValidationService.class);
 
     @Inject
-    private ComponentConfigProvider componentConfigProvider;
+    private ComponentConfigProviderService componentConfigProviderService;
 
     @Inject
     private ClusterComponentConfigProvider clusterComponentConfigProvider;
@@ -67,7 +66,7 @@ public class MaintenanceModeValidationService {
     private StackUpdater stackUpdater;
 
     @Inject
-    private FlowMessageService flowMessageService;
+    private CloudbreakFlowMessageService flowMessageService;
 
     @Inject
     private JsonHelper jsonHelper;
@@ -88,7 +87,7 @@ public class MaintenanceModeValidationService {
     public void setUpValidationFlow(Long stackId) {
         clusterService.updateClusterStatusByStackId(stackId, UPDATE_IN_PROGRESS);
         stackUpdater.updateStackStatus(stackId, DetailedStackStatus.CLUSTER_OPERATION, "Validating repos and images...");
-        flowMessageService.fireEventAndLog(stackId, Msg.MAINTENANCE_MODE_VALIDATION_STARTED, Status.UPDATE_IN_PROGRESS.name());
+        flowMessageService.fireEventAndLog(stackId, Msg.MAINTENANCE_MODE_VALIDATION_STARTED, UPDATE_IN_PROGRESS.name());
     }
 
     public List<Warning> validateStackRepository(Long clusterId, String stackRepo) {
@@ -154,7 +153,7 @@ public class MaintenanceModeValidationService {
     public List<Warning> validateImageCatalog(Stack stack) {
         List<Warning> warnings = new ArrayList<>();
         try {
-            Image image = componentConfigProvider.getImage(stack.getId());
+            Image image = componentConfigProviderService.getImage(stack.getId());
             StatedImage statedImage = imageCatalogService.getImage(image.getImageCatalogUrl(),
                     image.getImageCatalogName(), image.getImageId());
 

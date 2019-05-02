@@ -1,7 +1,11 @@
 package com.sequenceiq.it.cloudbreak.newway.testcase.mock;
 
+import static com.sequenceiq.it.cloudbreak.newway.context.RunningParameter.key;
+
 import java.util.HashSet;
 import java.util.Set;
+
+import javax.inject.Inject;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,21 +17,21 @@ import org.testng.annotations.Test;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.database.base.DatabaseType;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.kerberos.requests.ActiveDirectoryKerberosDescriptor;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.kerberos.requests.KerberosV4Request;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.instancegroup.instancemetadata.InstanceMetaDataV4Response;
-import com.sequenceiq.it.cloudbreak.newway.Environment;
-import com.sequenceiq.it.cloudbreak.newway.EnvironmentEntity;
-import com.sequenceiq.it.cloudbreak.newway.Stack;
 import com.sequenceiq.it.cloudbreak.newway.action.ClusterRepairAction;
-import com.sequenceiq.it.cloudbreak.newway.action.database.DatabaseCreateIfNotExistsAction;
-import com.sequenceiq.it.cloudbreak.newway.action.kerberos.KerberosTestAction;
+import com.sequenceiq.it.cloudbreak.newway.action.v4.database.DatabaseCreateIfNotExistsAction;
 import com.sequenceiq.it.cloudbreak.newway.assertion.MockVerification;
+import com.sequenceiq.it.cloudbreak.newway.client.EnvironmentTestClient;
+import com.sequenceiq.it.cloudbreak.newway.client.KerberosTestClient;
+import com.sequenceiq.it.cloudbreak.newway.client.StackTestClient;
 import com.sequenceiq.it.cloudbreak.newway.cloud.HostGroupType;
+import com.sequenceiq.it.cloudbreak.newway.context.Description;
 import com.sequenceiq.it.cloudbreak.newway.context.MockedTestContext;
 import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
-import com.sequenceiq.it.cloudbreak.newway.entity.ClusterEntity;
-import com.sequenceiq.it.cloudbreak.newway.entity.database.DatabaseEntity;
-import com.sequenceiq.it.cloudbreak.newway.entity.kerberos.KerberosTestDto;
-import com.sequenceiq.it.cloudbreak.newway.entity.stack.StackTestDto;
+import com.sequenceiq.it.cloudbreak.newway.dto.ClusterTestDto;
+import com.sequenceiq.it.cloudbreak.newway.dto.database.DatabaseTestDto;
+import com.sequenceiq.it.cloudbreak.newway.dto.environment.EnvironmentTestDto;
+import com.sequenceiq.it.cloudbreak.newway.dto.kerberos.KerberosTestDto;
+import com.sequenceiq.it.cloudbreak.newway.dto.stack.StackTestDto;
 import com.sequenceiq.it.cloudbreak.newway.testcase.AbstractIntegrationTest;
 import com.sequenceiq.it.spark.DynamicRouteStack;
 import com.sequenceiq.it.spark.ambari.AmbariClusterRequestResponse;
@@ -52,93 +56,122 @@ public class RepairTest extends AbstractIntegrationTest {
 
     private final Set<String> components = Set.of("component-new-liga", "component-liga-client", "component-yellow-submarine");
 
+    @Inject
+    private KerberosTestClient kerberosTestAction;
+
+    @Inject
+    private StackTestClient stackTestClient;
+
+    @Inject
+    private EnvironmentTestClient environmentTestClient;
+
     @BeforeMethod
     public void beforeMethod(Object[] data) {
         TestContext testContext = (TestContext) data[0];
         createDefaultUser(testContext);
         createDefaultCredential(testContext);
         createDefaultImageCatalog(testContext);
-        initializeDefaultClusterDefinitions(testContext);
+        initializeDefaultBlueprints(testContext);
     }
 
     @AfterMethod(alwaysRun = true)
-    public void tear(Object[] data) {
+    public void tearDown(Object[] data) {
         TestContext testContext = (TestContext) data[0];
-        testContext.cleanupTestContextEntity();
+        testContext.cleanupTestContext();
     }
 
-    @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Test(dataProvider = TEST_CONTEXT_WITH_MOCK, enabled = false)
+    @Description(
+            given = "a MOCK cluster without kerberos",
+            when = "repair the master node on the cluster",
+            then = "after the process the master has to be available")
     public void testRepairMasterNodeNoKerberos(MockedTestContext testContext) {
-        String clusterName = getNameGenerator().getRandomNameForResource();
-        String ambariRdsName = getNameGenerator().getRandomNameForResource();
+        String clusterName = resourcePropertyProvider().getName();
+        String ambariRdsName = resourcePropertyProvider().getName();
+        String hostnameKey = resourcePropertyProvider().getName();
         createEnvWithResources(testContext, ambariRdsName);
+        addAmbariMocks(testContext, clusterName);
         testContext
                 .given(StackTestDto.class)
                 .withName(clusterName)
                 .withCluster(getCluster(testContext, null, ambariRdsName))
-                .when(Stack.postV4())
-                .await(STACK_AVAILABLE);
-        StackTestDto stackEntity = testContext.get(StackTestDto.class);
-        InstanceMetaDataV4Response instanceMetaData = stackEntity.getInstanceMetaData(HostGroupType.MASTER.getName()).stream().findFirst().get();
-        String hostName = instanceMetaData.getDiscoveryFQDN();
-        String publicIp = instanceMetaData.getPublicIp();
-        addAmbariMocks(testContext, clusterName, hostName, publicIp);
+                .when(stackTestClient.createV4())
+                .await(STACK_AVAILABLE)
+                .select(s -> s.getInstanceMetaData(HostGroupType.MASTER.getName())
+                        .stream()
+                        .findFirst()
+                        .get()
+                        .getDiscoveryFQDN(), key(hostnameKey));
 
         testContext
                 .given(StackTestDto.class)
                 .when(ClusterRepairAction.valid())
                 .await(StackTestDto.class, STACK_AVAILABLE);
 
-        AmbariPathResolver ambariPathResolver = new AmbariPathResolver(clusterName, hostName);
-        assertGetClusterComponentCalls(stackEntity, AMBARI_CLUSTER_COMPONENTS, components, ambariPathResolver);
-        assertSetComponentStateCalls(stackEntity, AMBARI_HOST_COMPONENTS, components, "INSTALLED", 2, ambariPathResolver);
-        assertSetComponentStateCalls(stackEntity, AMBARI_HOST_COMPONENTS, components, "INIT", 1, ambariPathResolver);
-        assertSetComponentStateCalls(stackEntity, AMBARI_HOST_COMPONENTS, components, "STARTED", 1, ambariPathResolver);
         testContext.given(StackTestDto.class)
-                .then(MockVerification.verify(HttpMethod.GET, ambariPathResolver.resolve(AMBARI_HOST_COMPONENTS)).exactTimes(2))
-                .then(MockVerification.verify(HttpMethod.PUT, ambariPathResolver.resolve(AMBARI_HOST_COMPONENTS)).exactTimes(4))
-                .then(MockVerification.verify(HttpMethod.POST, ambariPathResolver.resolve(AMBARI_KERBEROS_CREDENTIAL)).exactTimes(0))
-                .then(MockVerification.verify(HttpMethod.PUT, ambariPathResolver.resolve(AMBARI_REGENERATE_KEYTABS)).bodyContains("KERBEROS").exactTimes(0))
-                .then(MockVerification.verify(HttpMethod.POST, ambariPathResolver.resolve(AMBARI_CLUSTER_REQUESTS)).bodyContains("RESTART").exactTimes(0))
+                .then((tc, stackEntity, cc) -> {
+                    String hostname = tc.getSelected(hostnameKey);
+                    AmbariPathResolver ambariPathResolver = new AmbariPathResolver(clusterName, hostname);
+                    assertSetComponentStateCalls(stackEntity, AMBARI_HOST_COMPONENTS, components, "INSTALLED", 2, ambariPathResolver);
+                    assertSetComponentStateCalls(stackEntity, AMBARI_HOST_COMPONENTS, components, "INIT", 1, ambariPathResolver);
+                    assertSetComponentStateCalls(stackEntity, AMBARI_HOST_COMPONENTS, components, "STARTED", 1, ambariPathResolver);
+                    stackEntity.then(MockVerification.verify(HttpMethod.GET,
+                            ambariPathResolver.resolve(AMBARI_HOST_COMPONENTS)).exactTimes(2));
+                    stackEntity.then(MockVerification.verify(HttpMethod.PUT,
+                            ambariPathResolver.resolve(AMBARI_HOST_COMPONENTS)).exactTimes(4));
+                    stackEntity.then(MockVerification.verify(HttpMethod.POST,
+                            ambariPathResolver.resolve(AMBARI_KERBEROS_CREDENTIAL)).exactTimes(0));
+                    stackEntity.then(MockVerification.verify(HttpMethod.PUT,
+                            ambariPathResolver.resolve(AMBARI_REGENERATE_KEYTABS)).bodyContains("KERBEROS")
+                            .exactTimes(0));
+                    stackEntity.then(MockVerification.verify(HttpMethod.POST,
+                            ambariPathResolver.resolve(AMBARI_CLUSTER_REQUESTS)).bodyContains("RESTART")
+                            .exactTimes(0));
+                    return stackEntity;
+                })
                 .validate();
     }
 
-    @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Test(dataProvider = TEST_CONTEXT_WITH_MOCK, enabled = false)
+    @Description(
+            given = "a MOCK cluster with kerberos",
+            when = "repair the master node on the cluster",
+            then = "after the process the master has to be available")
     public void testRepairMasterNodeWithKerberos(MockedTestContext testContext) {
-        String ambariRdsName = getNameGenerator().getRandomNameForResource();
+        String ambariRdsName = resourcePropertyProvider().getName();
         createEnvWithResources(testContext, ambariRdsName);
         KerberosV4Request kerberosRequest = getKerberosRequest();
-        String clusterName = getNameGenerator().getRandomNameForResource();
+        String clusterName = resourcePropertyProvider().getName();
+        addAmbariMocks(testContext, clusterName);
         testContext
-                .given(KerberosTestDto.class).valid().withRequest(kerberosRequest).withName(kerberosRequest.getName())
-                .when(KerberosTestAction::post)
+                .given(KerberosTestDto.class).withRequest(kerberosRequest).withName(kerberosRequest.getName())
+                .when(kerberosTestAction.createV4())
                 .given(StackTestDto.class)
                 .withName(clusterName)
                 .withGatewayPort(testContext.getSparkServer().getPort())
                 .withCluster(getCluster(testContext, kerberosRequest.getName(), ambariRdsName))
-                .when(Stack.postV4())
-                .await(STACK_AVAILABLE);
-        StackTestDto stackEntity = testContext.get(StackTestDto.class);
-        InstanceMetaDataV4Response instanceMetaData = stackEntity.getInstanceMetaData(HostGroupType.MASTER.getName()).stream().findFirst().get();
-        String hostName = instanceMetaData.getDiscoveryFQDN();
-        String publicIp = instanceMetaData.getPublicIp();
-        addAmbariMocks(testContext, clusterName, hostName, publicIp);
+                .when(stackTestClient.createV4())
+                .await(STACK_AVAILABLE)
+                .select(s -> s.getInstanceMetaData(HostGroupType.MASTER.getName()).stream().findFirst().get().getDiscoveryFQDN(), key("hostname"));
 
         testContext
                 .given(StackTestDto.class)
                 .when(ClusterRepairAction.valid())
                 .await(StackTestDto.class, STACK_AVAILABLE);
 
-        AmbariPathResolver ambariPathResolver = new AmbariPathResolver(clusterName, hostName);
-        assertGetClusterComponentCalls(stackEntity, AMBARI_CLUSTER_COMPONENTS, components, ambariPathResolver);
-        assertSetComponentStateCalls(stackEntity, AMBARI_HOST_COMPONENTS, components, "INSTALLED", 2, ambariPathResolver);
-        assertSetComponentStateCalls(stackEntity, AMBARI_HOST_COMPONENTS, components, "INIT", 1, ambariPathResolver);
-        assertSetComponentStateCalls(stackEntity, AMBARI_HOST_COMPONENTS, components, "STARTED", 1, ambariPathResolver);
-        stackEntity
-                .then(MockVerification.verify(HttpMethod.GET, ambariPathResolver.resolve(AMBARI_HOST_COMPONENTS)).exactTimes(2))
-                .then(MockVerification.verify(HttpMethod.POST, ambariPathResolver.resolve(AMBARI_KERBEROS_CREDENTIAL)))
-                .then(MockVerification.verify(HttpMethod.PUT, ambariPathResolver.resolve(AMBARI_REGENERATE_KEYTABS)).bodyContains("KERBEROS"))
-                .then(MockVerification.verify(HttpMethod.POST, ambariPathResolver.resolve(AMBARI_CLUSTER_REQUESTS)).bodyContains("RESTART"))
+        testContext.given(StackTestDto.class)
+                .then((tc, e, cc) -> {
+                    String hostname = tc.getSelected("hostname");
+                    AmbariPathResolver ambariPathResolver = new AmbariPathResolver(clusterName, hostname);
+                    assertSetComponentStateCalls(e, AMBARI_HOST_COMPONENTS, components, "INSTALLED", 2, ambariPathResolver);
+                    assertSetComponentStateCalls(e, AMBARI_HOST_COMPONENTS, components, "INIT", 1, ambariPathResolver);
+                    assertSetComponentStateCalls(e, AMBARI_HOST_COMPONENTS, components, "STARTED", 1, ambariPathResolver);
+                    e.then(MockVerification.verify(HttpMethod.GET, ambariPathResolver.resolve(AMBARI_HOST_COMPONENTS)).exactTimes(2));
+                    e.then(MockVerification.verify(HttpMethod.POST, ambariPathResolver.resolve(AMBARI_KERBEROS_CREDENTIAL)));
+                    e.then(MockVerification.verify(HttpMethod.PUT, ambariPathResolver.resolve(AMBARI_REGENERATE_KEYTABS)).bodyContains("KERBEROS"));
+                    e.then(MockVerification.verify(HttpMethod.POST, ambariPathResolver.resolve(AMBARI_CLUSTER_REQUESTS)).bodyContains("RESTART"));
+                    return e;
+                })
                 .validate();
     }
 
@@ -151,34 +184,34 @@ public class RepairTest extends AbstractIntegrationTest {
         MockVerification mockVerification = MockVerification.verify(HttpMethod.PUT, ambariPathResolver.resolve(path))
                 .bodyContains(expectedState);
         components.forEach(mockVerification::bodyContains);
-        mockVerification.exactTimes(times);
+        mockVerification.atLeast(times);
         stackEntity.then(mockVerification);
     }
 
     private void createEnvWithResources(MockedTestContext testContext, String ambariRdsName) {
-        testContext.given(EnvironmentEntity.class)
+        testContext.given(EnvironmentTestDto.class)
                 .withRdsConfigs(createAmbariRdsConfig(testContext, ambariRdsName))
                 .withLdapConfigs(createDefaultLdapConfig(testContext))
                 .withProxyConfigs(createDefaultProxyConfig(testContext))
-                .when(Environment::post);
+                .when(environmentTestClient.createV4());
     }
 
-    private ClusterEntity getCluster(MockedTestContext testContext, String kerberosConfigName, String ambariRdsName) {
-        testContext.given(ClusterEntity.class)
+    private ClusterTestDto getCluster(MockedTestContext testContext, String kerberosConfigName, String ambariRdsName) {
+        testContext.given(ClusterTestDto.class)
                 .valid()
                 .withRdsConfigNames(ambariRdsName);
 
         if (kerberosConfigName != null && !kerberosConfigName.isEmpty()) {
-            testContext.given(ClusterEntity.class).withKerberos(kerberosConfigName);
+            testContext.given(ClusterTestDto.class).withKerberos(kerberosConfigName);
         }
 
-        return testContext.given(ClusterEntity.class);
+        return testContext.given(ClusterTestDto.class);
     }
 
     private Set<String> createAmbariRdsConfig(MockedTestContext testContext, String ambariRdsName) {
 
         testContext
-                .given(DatabaseEntity.class)
+                .given(DatabaseTestDto.class)
                 .withType(DatabaseType.AMBARI.name())
                 .withName(ambariRdsName)
                 .when(new DatabaseCreateIfNotExistsAction());
@@ -188,25 +221,25 @@ public class RepairTest extends AbstractIntegrationTest {
     }
 
     private String getRdsConfigName(MockedTestContext testContext) {
-        return testContext.get(DatabaseEntity.class).getName();
+        return testContext.get(DatabaseTestDto.class).getName();
     }
 
     private String getEnvironmentName(MockedTestContext testContext) {
-        return testContext.get(EnvironmentEntity.class).getName();
+        return testContext.get(EnvironmentTestDto.class).getName();
     }
 
     private String getEnvironmentRegion(MockedTestContext testContext) {
-        return testContext.get(EnvironmentEntity.class).getRequest().getRegions().iterator().next();
+        return testContext.get(EnvironmentTestDto.class).getRequest().getRegions().iterator().next();
     }
 
-    private void addAmbariMocks(MockedTestContext testContext, String clusterName, String hostName, String publicIp) {
+    private void addAmbariMocks(MockedTestContext testContext, String clusterName) {
         DynamicRouteStack dynamicRouteStack = testContext.getModel().getAmbariMock().getDynamicRouteStack();
         dynamicRouteStack.get(AMBARI_HOST_COMPONENTS, new AmbariGetHostComponentsReponse(components, clusterName));
         components.forEach(comp -> dynamicRouteStack.get(AMBARI_CLUSTER_COMPONENTS, new AmbariGetServiceComponentInfoResponse(comp)));
-        dynamicRouteStack.put(AMBARI_HOST_COMPONENTS, new AmbariClusterRequestResponse(publicIp, clusterName));
+        dynamicRouteStack.put(AMBARI_HOST_COMPONENTS, new AmbariClusterRequestResponse(testContext.getModel().getMockServerAddress(), clusterName));
         dynamicRouteStack.post(AMBARI_KERBEROS_CREDENTIAL, new EmptyAmbariResponse(HTTP_CREATED));
-        dynamicRouteStack.put(AMBARI_REGENERATE_KEYTABS, new AmbariClusterRequestResponse(publicIp, clusterName));
-        dynamicRouteStack.post(AMBARI_CLUSTER_REQUESTS, new AmbariClusterRequestResponse(publicIp, clusterName));
+        dynamicRouteStack.put(AMBARI_REGENERATE_KEYTABS, new AmbariClusterRequestResponse(testContext.getModel().getMockServerAddress(), clusterName));
+        dynamicRouteStack.post(AMBARI_CLUSTER_REQUESTS, new AmbariClusterRequestResponse(testContext.getModel().getMockServerAddress(), clusterName));
     }
 
     private KerberosV4Request getKerberosRequest() {

@@ -43,7 +43,7 @@ import com.sequenceiq.cloudbreak.domain.Resource;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceGroup;
 import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceMetaData;
-import com.sequenceiq.cloudbreak.service.stack.connector.OperationException;
+import com.sequenceiq.cloudbreak.service.OperationException;
 
 import reactor.bus.EventBus;
 
@@ -137,12 +137,20 @@ public class ServiceProviderConnectorAdapter {
     }
 
     public String getTemplate(Stack stack) {
+        return waitGetTemplate(stack, triggerGetTemplate(stack));
+    }
+
+    public GetPlatformTemplateRequest triggerGetTemplate(Stack stack) {
         Location location = location(region(stack.getRegion()), availabilityZone(stack.getAvailabilityZone()));
         CloudContext cloudContext = new CloudContext(stack.getId(), stack.getName(), stack.cloudPlatform(), stack.getPlatformVariant(),
                 location, stack.getCreator().getUserId(), stack.getWorkspace().getId());
         CloudCredential cloudCredential = credentialConverter.convert(stack.getCredential());
         GetPlatformTemplateRequest getPlatformTemplateRequest = new GetPlatformTemplateRequest(cloudContext, cloudCredential);
         eventBus.notify(getPlatformTemplateRequest.selector(), eventFactory.createEvent(getPlatformTemplateRequest));
+        return getPlatformTemplateRequest;
+    }
+
+    public String waitGetTemplate(Stack stack, GetPlatformTemplateRequest getPlatformTemplateRequest) {
         try {
             GetPlatformTemplateResult res = getPlatformTemplateRequest.await();
             LOGGER.debug("Get template result: {}", res);
@@ -152,6 +160,9 @@ public class ServiceProviderConnectorAdapter {
             }
             return res.getTemplate();
         } catch (InterruptedException e) {
+            Location location = location(region(stack.getRegion()), availabilityZone(stack.getAvailabilityZone()));
+            CloudContext cloudContext = new CloudContext(stack.getId(), stack.getName(), stack.cloudPlatform(), stack.getPlatformVariant(),
+                    location, stack.getCreator().getUserId(), stack.getWorkspace().getId());
             LOGGER.error("Error while getting template: " + cloudContext, e);
             throw new OperationException(e);
         }

@@ -1,88 +1,57 @@
 package com.sequenceiq.it.cloudbreak.newway.testcase.mock;
 
-import java.io.IOException;
+import javax.inject.Inject;
 
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Strings;
+import com.sequenceiq.cloudbreak.util.JsonUtil;
 import com.sequenceiq.it.cloudbreak.exception.TestFailException;
-import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
-import com.sequenceiq.it.cloudbreak.newway.Stack;
+import com.sequenceiq.it.cloudbreak.newway.client.StackTestClient;
+import com.sequenceiq.it.cloudbreak.newway.context.Description;
 import com.sequenceiq.it.cloudbreak.newway.context.MockedTestContext;
-import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
-import com.sequenceiq.it.cloudbreak.newway.entity.stack.StackTestDto;
+import com.sequenceiq.it.cloudbreak.newway.dto.stack.StackTestDto;
 import com.sequenceiq.it.cloudbreak.newway.testcase.AbstractIntegrationTest;
+import com.sequenceiq.it.cloudbreak.newway.util.ShowBlueprintUtil;
 
 public class ShowBlueprintTest extends AbstractIntegrationTest {
 
-    @BeforeMethod
-    public void beforeMethod(Object[] data) {
-        minimalSetupForClusterCreation((MockedTestContext) data[0]);
-    }
+    @Inject
+    private StackTestClient stackTestClient;
 
-    protected void minimalSetupForClusterCreation(TestContext testContext) {
-        createDefaultUser(testContext);
-        createDefaultCredential(testContext);
-        createDefaultEnvironment(testContext);
-        createDefaultImageCatalog(testContext);
-        initializeDefaultClusterDefinitions(testContext);
-    }
-
-    @Test(dataProvider = TEST_CONTEXT_WITH_MOCK,
-            description = "When cluster does not exist the we should return with the future blueprint")
+    @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(given = "stack", when = "cluster does not exist ", then = "we should return with the future blueprint")
     public void testGetBlueprintWhenClusterIsNotAliveThenShouldReturnWithBlueprint(MockedTestContext testContext) {
-        String clusterName = getNameGenerator().getRandomNameForResource();
+        String clusterName = resourcePropertyProvider().getName();
         testContext
-                .given(StackTestDto.class).valid()
+                .given(StackTestDto.class)
+                .valid()
                 .withName(clusterName)
-                .when(Stack.generatedBlueprint())
-                .then(ShowBlueprintTest::checkFutureBlueprint)
+                .when(stackTestClient.blueprintRequestV4())
+                .then(ShowBlueprintUtil::checkFutureBlueprint)
                 .validate();
     }
 
-    @Test(dataProvider = TEST_CONTEXT_WITH_MOCK,
-            description = "When cluster exist the we should return with the generated blueprint")
+    @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(given = "stack", when = "cluster exist ", then = "we should return with the generated blueprint")
     public void testGetBlueprintWhenClusterIsAliveThenShouldReturnWithBlueprint(MockedTestContext testContext) {
-        String clusterName = getNameGenerator().getRandomNameForResource();
+        String clusterName = resourcePropertyProvider().getName();
         testContext
-                .given(StackTestDto.class).valid()
+                .given(StackTestDto.class)
+                .valid()
                 .withName(clusterName)
-                .when(Stack.postV4())
+                .when(stackTestClient.createV4())
                 .await(STACK_AVAILABLE)
-                .when(Stack.getV4())
-                .then(ShowBlueprintTest::checkGeneratedBlueprint)
+                .when(stackTestClient.getV4())
+                .then(ShowBlueprintUtil::checkGeneratedBlueprint)
                 .validate();
-    }
-
-    private static StackTestDto checkFutureBlueprint(TestContext testContext, StackTestDto stackTestDto, CloudbreakClient cloudbreakClient) {
-        String extendedBlueprintText = stackTestDto.getGeneratedClusterDefinition().getClusterDefinitionText();
-        validateGeneratedBlueprint(extendedBlueprintText);
-        return stackTestDto;
-    }
-
-    private static StackTestDto checkGeneratedBlueprint(TestContext testContext, StackTestDto stackTestDto, CloudbreakClient cloudbreakClient) {
-        String extendedBlueprintText = stackTestDto.getResponse().getCluster().getAmbari().getExtendedClusterDefinitionText();
-        validateGeneratedBlueprint(extendedBlueprintText);
-        return stackTestDto;
     }
 
     private static void validateGeneratedBlueprint(String extendedBlueprintText) {
         if (Strings.isNullOrEmpty(extendedBlueprintText)) {
             throw new TestFailException("Generated Blueprint does not exist");
-        } else if (!isJSONValid(extendedBlueprintText)) {
+        } else if (!JsonUtil.isValid(extendedBlueprintText)) {
             throw new TestFailException("Generated Blueprint is not a valid json");
-        }
-    }
-
-    public static boolean isJSONValid(String jsonInString) {
-        try {
-            final ObjectMapper mapper = new ObjectMapper();
-            mapper.readTree(jsonInString);
-            return true;
-        } catch (IOException e) {
-            return false;
         }
     }
 }

@@ -15,15 +15,15 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import org.testng.collections.Lists;
 
+import com.google.common.collect.Lists;
 import com.sequenceiq.cloudbreak.cloud.model.Image;
 import com.sequenceiq.cloudbreak.core.flow2.CheckResult;
 import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceMetaData;
-import com.sequenceiq.cloudbreak.service.cluster.ambari.InstanceMetadataUpdater;
-import com.sequenceiq.cloudbreak.service.cluster.ambari.InstanceMetadataUpdater.Package;
+import com.sequenceiq.cloudbreak.message.CloudbreakMessagesService;
+import com.sequenceiq.cloudbreak.service.cluster.InstanceMetadataUpdater;
+import com.sequenceiq.cloudbreak.service.cluster.InstanceMetadataUpdater.Package;
 import com.sequenceiq.cloudbreak.service.image.StatedImage;
-import com.sequenceiq.cloudbreak.service.messages.CloudbreakMessagesService;
 
 @Component
 public class PackageVersionChecker {

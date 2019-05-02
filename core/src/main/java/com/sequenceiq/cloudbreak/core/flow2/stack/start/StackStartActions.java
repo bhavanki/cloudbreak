@@ -18,6 +18,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.statemachine.StateContext;
 import org.springframework.statemachine.action.Action;
 
+import com.sequenceiq.cloudbreak.api.util.ConverterUtil;
 import com.sequenceiq.cloudbreak.cloud.context.CloudContext;
 import com.sequenceiq.cloudbreak.cloud.event.Payload;
 import com.sequenceiq.cloudbreak.cloud.event.Selectable;
@@ -31,7 +32,7 @@ import com.sequenceiq.cloudbreak.cloud.model.CloudResource;
 import com.sequenceiq.cloudbreak.cloud.model.Location;
 import com.sequenceiq.cloudbreak.converter.spi.CredentialToCloudCredentialConverter;
 import com.sequenceiq.cloudbreak.converter.spi.StackToCloudStackConverter;
-import com.sequenceiq.cloudbreak.core.flow2.AbstractAction;
+import com.sequenceiq.cloudbreak.core.flow2.AbstractStackAction;
 import com.sequenceiq.cloudbreak.core.flow2.stack.AbstractStackFailureAction;
 import com.sequenceiq.cloudbreak.core.flow2.stack.StackFailureContext;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
@@ -39,10 +40,9 @@ import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceMetaData;
 import com.sequenceiq.cloudbreak.logger.MDCBuilder;
 import com.sequenceiq.cloudbreak.reactor.api.event.StackEvent;
 import com.sequenceiq.cloudbreak.reactor.api.event.StackFailureEvent;
-import com.sequenceiq.cloudbreak.repository.InstanceMetaDataRepository;
 import com.sequenceiq.cloudbreak.service.metrics.MetricType;
+import com.sequenceiq.cloudbreak.service.stack.InstanceMetaDataService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
-import com.sequenceiq.cloudbreak.api.util.ConverterUtil;
 
 @Configuration
 public class StackStartActions {
@@ -59,7 +59,7 @@ public class StackStartActions {
 
     @Bean(name = "START_STATE")
     public Action<?, ?> stackStartAction() {
-        return new AbstractStackStartAction<StackEvent>(StackEvent.class) {
+        return new AbstractStackStartAction<>(StackEvent.class) {
             @Override
             protected void doExecute(StackStartStopContext context, StackEvent payload, Map<Object, Object> variables) {
                 stackStartStopService.startStackStart(context);
@@ -102,7 +102,7 @@ public class StackStartActions {
             @Override
             protected void doExecute(StackStartStopContext context, CollectMetadataResult payload, Map<Object, Object> variables) {
                 stackStartStopService.finishStackStart(context, payload.getResults());
-                metricService.incrementMetricCounter(MetricType.STACK_START_SUCCESSFUL, context.getStack());
+                getMetricService().incrementMetricCounter(MetricType.STACK_START_SUCCESSFUL, context.getStack());
                 sendEvent(context);
             }
 
@@ -119,7 +119,7 @@ public class StackStartActions {
             @Override
             protected void doExecute(StackFailureContext context, StackFailureEvent payload, Map<Object, Object> variables) {
                 stackStartStopService.handleStackStartError(context.getStackView(), payload);
-                metricService.incrementMetricCounter(MetricType.STACK_START_FAILED, context.getStackView());
+                getMetricService().incrementMetricCounter(MetricType.STACK_START_FAILED, context.getStackView());
                 sendEvent(context);
             }
 
@@ -131,14 +131,14 @@ public class StackStartActions {
     }
 
     private abstract static class AbstractStackStartAction<P extends Payload>
-            extends AbstractAction<StackStartState, StackStartEvent, StackStartStopContext, P> {
+            extends AbstractStackAction<StackStartState, StackStartEvent, StackStartStopContext, P> {
         private static final Logger LOGGER = LoggerFactory.getLogger(AbstractStackStartAction.class);
 
         @Inject
         private StackService stackService;
 
         @Inject
-        private InstanceMetaDataRepository instanceMetaDataRepository;
+        private InstanceMetaDataService instanceMetaDataService;
 
         @Inject
         private CredentialToCloudCredentialConverter credentialConverter;
@@ -152,7 +152,7 @@ public class StackStartActions {
             Long stackId = payload.getStackId();
             Stack stack = stackService.getByIdWithListsInTransaction(stackId);
             MDCBuilder.buildMdcContext(stack);
-            List<InstanceMetaData> instances = new ArrayList<>(instanceMetaDataRepository.findNotTerminatedForStack(stackId));
+            List<InstanceMetaData> instances = new ArrayList<>(instanceMetaDataService.findNotTerminatedForStack(stackId));
             Location location = location(region(stack.getRegion()), availabilityZone(stack.getAvailabilityZone()));
             CloudContext cloudContext = new CloudContext(stack.getId(), stack.getName(), stack.cloudPlatform(), stack.getPlatformVariant(),
                     location, stack.getCreator().getUserId(), stack.getWorkspace().getId());

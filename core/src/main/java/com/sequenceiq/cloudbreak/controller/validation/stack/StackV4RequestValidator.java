@@ -1,15 +1,17 @@
 package com.sequenceiq.cloudbreak.controller.validation.stack;
 
 import static com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status.AVAILABLE;
+import static org.apache.commons.lang3.StringUtils.isNotBlank;
+import static org.apache.commons.lang3.StringUtils.isNotEmpty;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import javax.inject.Inject;
 
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
@@ -28,19 +30,19 @@ import com.sequenceiq.cloudbreak.controller.validation.ValidationResult;
 import com.sequenceiq.cloudbreak.controller.validation.ValidationResult.ValidationResultBuilder;
 import com.sequenceiq.cloudbreak.controller.validation.Validator;
 import com.sequenceiq.cloudbreak.controller.validation.template.InstanceTemplateV4RequestValidator;
+import com.sequenceiq.cloudbreak.domain.Blueprint;
 import com.sequenceiq.cloudbreak.domain.Credential;
-import com.sequenceiq.cloudbreak.domain.ClusterDefinition;
 import com.sequenceiq.cloudbreak.domain.PlatformResourceRequest;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.DatalakeResources;
 import com.sequenceiq.cloudbreak.service.CloudbreakRestRequestThreadLocalService;
+import com.sequenceiq.cloudbreak.service.blueprint.BlueprintService;
 import com.sequenceiq.cloudbreak.service.cluster.ClusterService;
 import com.sequenceiq.cloudbreak.service.credential.CredentialService;
-import com.sequenceiq.cloudbreak.service.clusterdefinition.ClusterDefinitionService;
 import com.sequenceiq.cloudbreak.service.datalake.DatalakeResourcesService;
 import com.sequenceiq.cloudbreak.service.environment.EnvironmentService;
-import com.sequenceiq.cloudbreak.service.kerberos.KerberosService;
+import com.sequenceiq.cloudbreak.service.kerberos.KerberosConfigService;
 import com.sequenceiq.cloudbreak.service.platform.PlatformParameterService;
 import com.sequenceiq.cloudbreak.service.rdsconfig.RdsConfigService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
@@ -61,13 +63,13 @@ public class StackV4RequestValidator implements Validator<StackV4Request> {
     private InstanceTemplateV4RequestValidator templateRequestValidator;
 
     @Inject
-    private ClusterDefinitionService clusterDefinitionService;
+    private BlueprintService blueprintService;
 
     @Inject
     private RdsConfigService rdsConfigService;
 
     @Inject
-    private KerberosService kerberosService;
+    private KerberosConfigService kerberosConfigService;
 
     @Inject
     private PlatformParameterService platformParameterService;
@@ -106,9 +108,11 @@ public class StackV4RequestValidator implements Validator<StackV4Request> {
     }
 
     private void validateSharedService(StackV4Request stackRequest, ValidationResultBuilder validationBuilder, Long workspaceId) {
-        checkResourceRequirementsIfBlueprintIsDatalakeReady(stackRequest, validationBuilder, workspaceId);
+        ClusterV4Request clusterReq = stackRequest.getCluster();
+        Blueprint blueprint = blueprintService.getByNameForWorkspaceId(clusterReq.getBlueprintName(), workspaceId);
+        checkResourceRequirementsIfBlueprintIsDatalakeReady(stackRequest, blueprint, validationBuilder, workspaceId);
         SharedServiceV4Request sharedService = stackRequest.getSharedService();
-        if (sharedService != null && StringUtils.isNotBlank(sharedService.getDatalakeName())) {
+        if (isDatalakeNameSpecified(sharedService) && blueprintService.isAmbariBlueprint(blueprint)) {
             DatalakeResources datalakeResources = datalakeResourcesService.getByNameForWorkspaceId(sharedService.getDatalakeName(), workspaceId);
             Optional<Stack> stack = datalakeResources.getDatalakeStackId() == null ? Optional.empty()
                     : stackService.findById(datalakeResources.getDatalakeStackId());
@@ -122,8 +126,12 @@ public class StackV4RequestValidator implements Validator<StackV4Request> {
         }
     }
 
+    private boolean isDatalakeNameSpecified(SharedServiceV4Request sharedService) {
+        return sharedService != null && isNotBlank(sharedService.getDatalakeName());
+    }
+
     private void validateAvailableDatalakeStack(ValidationResultBuilder validationBuilder, Optional<Stack> stack) {
-        Optional<Cluster> cluster = Optional.ofNullable(clusterService.retrieveClusterByStackIdWithoutAuth(stack.get().getId()));
+        Optional<Cluster> cluster = clusterService.retrieveClusterByStackIdWithoutAuth(stack.get().getId());
         if (cluster.isPresent() && !AVAILABLE.equals(cluster.get().getStatus())) {
             validationBuilder.error("Ambari installation in progress or some of it's components has failed. "
                     + "Please check Ambari before trying to attach cluster to datalake.");
@@ -183,23 +191,24 @@ public class StackV4RequestValidator implements Validator<StackV4Request> {
         }
     }
 
-    private void checkResourceRequirementsIfBlueprintIsDatalakeReady(StackV4Request stackRequest, ValidationResultBuilder validationBuilder, Long workspaceId) {
-        ClusterDefinition clusterDefinition = clusterDefinitionService.getByNameForWorkspaceId(stackRequest.getCluster().getAmbari().getClusterDefinitionName(),
-                workspaceId);
-        boolean sharedServiceReadyBlueprint = clusterDefinitionService.isDatalakeAmbariBlueprint(clusterDefinition);
-        if (sharedServiceReadyBlueprint) {
-            Set<String> databaseTypes = getGivenRdsTypes(stackRequest.getCluster(), workspaceId);
-            String rdsErrorMessageFormat = "For a Datalake cluster (since you have selected a datalake ready cluster definition) you should provide at least "
-                    + "one %s rds/database configuration to the Cluster request";
-            if (!databaseTypes.contains(DatabaseType.HIVE.name())) {
-                validationBuilder.error(String.format(rdsErrorMessageFormat, "Hive"));
-            }
-            if (!databaseTypes.contains(DatabaseType.RANGER.name())) {
-                validationBuilder.error(String.format(rdsErrorMessageFormat, "Ranger"));
-            }
-            if (isLdapNotProvided(stackRequest.getCluster())) {
-                validationBuilder.error("For a Datalake cluster (since you have selected a datalake ready cluster definition) you should provide an "
-                        + "LDAP configuration or its name/id to the Cluster request");
+    private void checkResourceRequirementsIfBlueprintIsDatalakeReady(StackV4Request stackRequest, Blueprint blueprint,
+            ValidationResultBuilder validationBuilder, Long wsId) {
+        if (blueprintService.isDatalakeBlueprint(blueprint)) {
+            ClusterV4Request clusterRequest = stackRequest.getCluster();
+            Set<String> databaseTypes = getGivenRdsTypes(clusterRequest, wsId);
+            if (blueprintService.isAmbariBlueprint(blueprint)) {
+                String rdsErrorMessageFormat = "For a Datalake cluster (since you have selected a datalake ready blueprint) you should provide at least "
+                        + "one %s rds/database configuration to the Cluster request";
+                if (!databaseTypes.contains(DatabaseType.HIVE.name())) {
+                    validationBuilder.error(String.format(rdsErrorMessageFormat, "Hive"));
+                }
+                if (!databaseTypes.contains(DatabaseType.RANGER.name())) {
+                    validationBuilder.error(String.format(rdsErrorMessageFormat, "Ranger"));
+                }
+                if (isLdapNotProvided(clusterRequest)) {
+                    validationBuilder.error("For a Datalake cluster (since you have selected a datalake ready blueprint) you should provide an "
+                            + "LDAP configuration or its name/id to the Cluster request");
+                }
             }
         }
     }
@@ -209,15 +218,15 @@ public class StackV4RequestValidator implements Validator<StackV4Request> {
     }
 
     private Set<String> getGivenRdsTypes(ClusterV4Request clusterRequest, Long workspaceId) {
-        return clusterRequest.getDatabases().stream().map(s ->
+        return Optional.ofNullable(clusterRequest.getDatabases()).orElse(new HashSet<>()).stream().map(s ->
                 rdsConfigService.getByNameForWorkspaceId(s, workspaceId).getType()).collect(Collectors.toSet());
     }
 
     private void validateKerberos(String kerberosName, ValidationResultBuilder validationBuilder, Long workspaceId) {
         if (kerberosName != null && kerberosName.isEmpty()) {
             validationBuilder.error("kerberosName should not be empty. Should be either filled or null!");
-        } else if (StringUtils.isNotEmpty(kerberosName)) {
-            kerberosService.getByNameForWorkspaceId(kerberosName, workspaceId);
+        } else if (isNotEmpty(kerberosName)) {
+            kerberosConfigService.getByNameForWorkspaceId(kerberosName, workspaceId);
         }
     }
 

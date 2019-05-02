@@ -16,32 +16,28 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import com.google.common.collect.Lists;
-import com.sequenceiq.ambari.client.AmbariClient;
-import com.sequenceiq.cloudbreak.clusterdefinition.CentralClusterDefinitionParameterQueryService;
+import com.sequenceiq.cloudbreak.cluster.api.DatalakeConfigApi;
+import com.sequenceiq.cloudbreak.blueprint.CentralBlueprintParameterQueryService;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.DatalakeResources;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.ServiceDescriptor;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.ServiceDescriptorDefinition;
-import com.sequenceiq.cloudbreak.repository.cluster.DatalakeResourcesRepository;
-import com.sequenceiq.cloudbreak.repository.cluster.ServiceDescriptorRepository;
 import com.sequenceiq.cloudbreak.service.TransactionService;
-import com.sequenceiq.cloudbreak.service.cluster.ambari.AmbariClientFactory;
+import com.sequenceiq.cloudbreak.service.datalake.DatalakeResourcesService;
+import com.sequenceiq.cloudbreak.service.servicedescriptor.ServiceDescriptorService;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AmbariDatalakeConfigProviderTest {
     @Mock
-    private AmbariClientFactory ambariClientFactory;
-
-    @Mock
     private ServiceDescriptorDefinitionProvider serviceDescriptorDefinitionProvider;
 
     @Mock
-    private CentralClusterDefinitionParameterQueryService centralClusterDefinitionParameterQueryService;
+    private CentralBlueprintParameterQueryService centralBlueprintParameterQueryService;
 
     @Mock
-    private DatalakeResourcesRepository datalakeResourcesRepository;
+    private DatalakeResourcesService datalakeResourcesService;
 
     @Mock
-    private ServiceDescriptorRepository serviceDescriptorRepository;
+    private ServiceDescriptorService serviceDescriptorService;
 
     @Mock
     private TransactionService transactionService;
@@ -52,7 +48,7 @@ public class AmbariDatalakeConfigProviderTest {
     @Test
     public void test() throws Exception {
         // GIVEN
-        AmbariClient ambariClient = mock(AmbariClient.class);
+        DatalakeConfigApi connector = mock(DatalakeConfigApi.class);
         Map<String, Map<String, String>> serviceSecretParamMap = Map.ofEntries(Map.entry("service1",
                 Map.ofEntries(Map.entry("blueprintsecretparam1", "blueprintsecretparam1"), Map.entry("blueprintsecretparam2", "blueprintsecretparam2"))),
                 Map.entry("service2", Map.ofEntries(Map.entry("blueprintsecretparam3", "blueprintsecretparam3"),
@@ -82,37 +78,37 @@ public class AmbariDatalakeConfigProviderTest {
         when(serviceDescriptorDefinitionProvider.getServiceDescriptorDefinitionMap()).thenReturn(Map.ofEntries(
                 Map.entry(serviceDescriptorDefinition1.getServiceName(), serviceDescriptorDefinition1),
                 Map.entry(serviceDescriptorDefinition2.getServiceName(), serviceDescriptorDefinition2)));
-        when(ambariClient.getConfigValuesByConfigIds(Lists.newArrayList(configIds))).thenReturn(ambariParameters);
-        when(ambariClient.getHostNamesByComponent("component1")).thenReturn(List.of("host1"));
-        when(ambariClient.getHostNamesByComponent("component2")).thenReturn(List.of("host1", "host2"));
-        when(ambariClient.getHostNamesByComponent("component3")).thenReturn(List.of("host2"));
-        when(ambariClient.getHostNamesByComponent("component4")).thenReturn(List.of("host3"));
+        when(connector.getConfigValuesByConfigIds(Lists.newArrayList(configIds))).thenReturn(ambariParameters);
+        when(connector.getHostNamesByComponent("component1")).thenReturn(List.of("host1"));
+        when(connector.getHostNamesByComponent("component2")).thenReturn(List.of("host1", "host2"));
+        when(connector.getHostNamesByComponent("component3")).thenReturn(List.of("host2"));
+        when(connector.getHostNamesByComponent("component4")).thenReturn(List.of("host3"));
         // WHEN
-        DatalakeResources datalakeResources = underTest.collectDatalakeResources("ambariName", "ambariUrl", "ambariIp", "ambariFqdn", ambariClient,
+        DatalakeResources datalakeResources = underTest.collectDatalakeResources("ambariName", "ambariUrl", "ambariIp", "ambariFqdn", connector,
                 serviceSecretParamMap, null, null, null);
         // THEN
         Assert.assertNotNull(datalakeResources);
         ServiceDescriptor serviceDescriptor1 = datalakeResources.getServiceDescriptorMap().get("service1");
-        Assert.assertEquals(serviceDescriptor1.getClusterDefinitionParams().getMap().size(), serviceDescriptorDefinition1.getBlueprintParamKeys().size());
-        for (Map.Entry blueprintParam : serviceDescriptor1.getClusterDefinitionParams().getMap().entrySet()) {
+        Assert.assertEquals(serviceDescriptor1.getBlueprintParams().getMap().size(), serviceDescriptorDefinition1.getBlueprintParamKeys().size());
+        for (Map.Entry blueprintParam : serviceDescriptor1.getBlueprintParams().getMap().entrySet()) {
             Assert.assertTrue(serviceDescriptorDefinition1.getBlueprintParamKeys().contains(blueprintParam.getKey()));
             Assert.assertEquals(blueprintParam.getValue(), ambariParameters.get(blueprintParam.getKey()));
         }
-        Assert.assertEquals(serviceDescriptor1.getClusterDefinitionSecretParams().getMap().size(),
+        Assert.assertEquals(serviceDescriptor1.getBlueprintSecretParams().getMap().size(),
                 serviceDescriptorDefinition1.getBlueprintSecretParamKeys().size());
-        for (Map.Entry blueprintSecretParam : serviceDescriptor1.getClusterDefinitionSecretParams().getMap().entrySet()) {
+        for (Map.Entry blueprintSecretParam : serviceDescriptor1.getBlueprintSecretParams().getMap().entrySet()) {
             Assert.assertTrue(serviceDescriptorDefinition1.getBlueprintSecretParamKeys().contains(blueprintSecretParam.getKey()));
             Assert.assertEquals(blueprintSecretParam.getValue(), ambariParameters.get(blueprintSecretParam.getKey()));
         }
         ServiceDescriptor serviceDescriptor2 = datalakeResources.getServiceDescriptorMap().get("service2");
-        Assert.assertEquals(serviceDescriptor2.getClusterDefinitionParams().getMap().size(), serviceDescriptorDefinition2.getBlueprintParamKeys().size());
-        for (Map.Entry blueprintParam : serviceDescriptor2.getClusterDefinitionParams().getMap().entrySet()) {
+        Assert.assertEquals(serviceDescriptor2.getBlueprintParams().getMap().size(), serviceDescriptorDefinition2.getBlueprintParamKeys().size());
+        for (Map.Entry blueprintParam : serviceDescriptor2.getBlueprintParams().getMap().entrySet()) {
             Assert.assertTrue(serviceDescriptorDefinition2.getBlueprintParamKeys().contains(blueprintParam.getKey()));
             Assert.assertEquals(blueprintParam.getValue(), ambariParameters.get(blueprintParam.getKey()));
         }
-        Assert.assertEquals(serviceDescriptor2.getClusterDefinitionSecretParams().getMap().size(),
+        Assert.assertEquals(serviceDescriptor2.getBlueprintSecretParams().getMap().size(),
                 serviceDescriptorDefinition2.getBlueprintSecretParamKeys().size());
-        for (Map.Entry blueprintSecretParam : serviceDescriptor2.getClusterDefinitionSecretParams().getMap().entrySet()) {
+        for (Map.Entry blueprintSecretParam : serviceDescriptor2.getBlueprintSecretParams().getMap().entrySet()) {
             Assert.assertTrue(serviceDescriptorDefinition2.getBlueprintSecretParamKeys().contains(blueprintSecretParam.getKey()));
             Assert.assertEquals(blueprintSecretParam.getValue(), ambariParameters.get(blueprintSecretParam.getKey()));
         }

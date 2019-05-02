@@ -13,10 +13,10 @@ import org.springframework.statemachine.action.Action;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status;
 import com.sequenceiq.cloudbreak.cloud.event.Payload;
 import com.sequenceiq.cloudbreak.cloud.event.Selectable;
-import com.sequenceiq.cloudbreak.core.flow2.AbstractAction;
-import com.sequenceiq.cloudbreak.core.flow2.stack.FlowMessageService;
-import com.sequenceiq.cloudbreak.core.flow2.stack.Msg;
+import com.sequenceiq.cloudbreak.core.flow2.AbstractStackAction;
+import com.sequenceiq.cloudbreak.core.flow2.stack.CloudbreakFlowMessageService;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
+import com.sequenceiq.cloudbreak.message.Msg;
 import com.sequenceiq.cloudbreak.reactor.api.event.StackEvent;
 import com.sequenceiq.cloudbreak.reactor.api.event.StackFailureEvent;
 import com.sequenceiq.cloudbreak.reactor.api.event.resource.UnhealthyInstancesDetectionRequest;
@@ -31,11 +31,11 @@ public class ManualStackRepairTriggerActions {
     private StackRepairService stackRepairService;
 
     @Inject
-    private FlowMessageService flowMessageService;
+    private CloudbreakFlowMessageService flowMessageService;
 
     @Bean(name = "UNHEALTHY_INSTANCES_DETECTION_STATE")
     public Action<?, ?> detectUnhealthyInstancesAction() {
-        return new AbstractStackRepairTriggerAction<StackEvent>(StackEvent.class) {
+        return new AbstractStackRepairTriggerAction<>(StackEvent.class) {
 
             @Override
             protected void doExecute(StackRepairTriggerContext context, StackEvent payload, Map<Object, Object> variables) {
@@ -52,7 +52,7 @@ public class ManualStackRepairTriggerActions {
 
     @Bean(name = "NOTIFY_STACK_REPAIR_SERVICE_STATE")
     public Action<?, ?> notifyStackRepairServiceAction() {
-        return new AbstractStackRepairTriggerAction<UnhealthyInstancesDetectionResult>(UnhealthyInstancesDetectionResult.class) {
+        return new AbstractStackRepairTriggerAction<>(UnhealthyInstancesDetectionResult.class) {
 
             @Override
             protected void doExecute(StackRepairTriggerContext context, UnhealthyInstancesDetectionResult payload, Map<Object, Object> variables) {
@@ -69,7 +69,7 @@ public class ManualStackRepairTriggerActions {
 
     @Bean(name = "MANUAL_STACK_REPAIR_TRIGGER_FAILED_STATE")
     public Action<?, ?> handleErrorAction() {
-        return new AbstractStackRepairTriggerAction<UnhealthyInstancesDetectionResult>(UnhealthyInstancesDetectionResult.class) {
+        return new AbstractStackRepairTriggerAction<>(UnhealthyInstancesDetectionResult.class) {
 
             @Override
             protected void doExecute(StackRepairTriggerContext context, UnhealthyInstancesDetectionResult payload, Map<Object, Object> variables) {
@@ -85,7 +85,7 @@ public class ManualStackRepairTriggerActions {
     }
 
     private abstract static class AbstractStackRepairTriggerAction<P extends Payload>
-            extends AbstractAction<ManualStackRepairTriggerState, ManualStackRepairTriggerEvent, StackRepairTriggerContext, P> {
+            extends AbstractStackAction<ManualStackRepairTriggerState, ManualStackRepairTriggerEvent, StackRepairTriggerContext, P> {
 
         @Inject
         private StackService stackService;

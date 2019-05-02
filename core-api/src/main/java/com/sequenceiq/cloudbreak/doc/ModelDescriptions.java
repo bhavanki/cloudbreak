@@ -20,19 +20,20 @@ public class ModelDescriptions {
     public static final String PREINSTALLED = "Denotes that the image is prewarmed or base image.";
     public static final String ENVIRONMENTS = "Environments of the resource";
     public static final String GOV_CLOUD_FLAG = "Flag indicating if the credential type is AWS Gov Cloud";
+    public static final String TENANT_NAME = "name of the current tenant";
 
     private ModelDescriptions() {
     }
 
-    public static class ClusterDefinitionModelDescription {
-        public static final String URL = "url source of a cluster definition, set this or the clusterDefinition field";
-        public static final String CLUSTER_DEFINITION_NAME = "gathered from clusterDefinitionName field from the cluster definition";
-        public static final String CLUSTER_DEFINITION = "cluster definition, set this or the url field";
+    public static class BlueprintModelDescription {
+        public static final String URL = "url source of a blueprint, set this or the blueprint field";
+        public static final String BLUEPRINT_NAME = "gathered from blueprintName field from the blueprint";
+        public static final String BLUEPRINT = "blueprint, set this or the url field";
         public static final String HOST_GROUP_COUNT = "number of host groups";
-        public static final String STATUS = "status of the cluster definition";
-        public static final String INPUTS = "input parameters of the cluster definition";
-        public static final String CLUSTER_DEFINITION_PROPERTIES = "properties to extend the cluster definition with";
-        public static final String TAGS = "user defined tags for cluster definition";
+        public static final String STATUS = "status of the blueprint";
+        public static final String INPUTS = "input parameters of the blueprint";
+        public static final String BLUEPRINT_PROPERTIES = "properties to extend the blueprint with";
+        public static final String TAGS = "user defined tags for blueprint";
         public static final String STACK_TYPE = "The type of the stack: for example HDP or HDF";
         public static final String STACK_VERSION = "The version of the stack";
     }
@@ -125,8 +126,8 @@ public class ModelDescriptions {
     }
 
     public static class RecommendationRequestModelDescription {
-        public static final String CLUSTER_DEFINITION_NAME = "name that could indentify an existing cluster defintion";
-        public static final String CLUSTER_DEFINITION_ID = "id that could indentify an existing cluster defintion";
+        public static final String BLUEPRINT_NAME = "name that could indentify an existing cluster defintion";
+        public static final String BLUEPRINT_ID = "id that could indentify an existing cluster defintion";
     }
 
     public static class StackModelDescription {
@@ -144,7 +145,7 @@ public class ModelDescriptions {
         public static final String CREDENTIAL_NAME = "credential resource name for the stack";
         public static final String USERNAME = "ambari username";
         public static final String PASSWORD = "ambari password";
-        public static final String EXTENDED_CLUSTER_DEFINITION_TEXT = "extended cluster definition text";
+        public static final String EXTENDED_BLUEPRINT_TEXT = "extended blueprint text";
         public static final String ENABLE_SECURITY = "enable Kerberos security";
         public static final String KERBEROS_MASTER_KEY = "kerberos master key";
         public static final String KERBEROS_ADMIN = "kerberos admin user";
@@ -168,8 +169,8 @@ public class ModelDescriptions {
         public static final String STACK_STATUS = "status of the stack";
         public static final String STATUS_REASON = "status message of the stack";
         public static final String STATUS_REQUEST = "status of the scale request";
-        public static final String AMBARI_IP = "public ambari ip of the stack";
-        public static final String AMBARI_URL = "public ambari url";
+        public static final String SERVER_IP = "public ambari ip of the stack";
+        public static final String SERVER_URL = "public ambari url";
         public static final String DP_AMBARI_USERNAME = "ambari username for Dataplane";
         public static final String DP_AMBARI_PASSWORD = "ambari password for Dataplane";
         public static final String NETWORK_ID = "network resource id for the stack";
@@ -204,11 +205,9 @@ public class ModelDescriptions {
         public static final String AUTHENTICATION = "stack related authentication";
         public static final String FILESYSTEM = "cluster related filesystem";
         public static final String NETWORK = "stack related network";
-        public static final String FLEX_ID = "id of the related flex subscription";
         public static final String SOURCE_CREDENTIAL = "source credential object for cloning";
         public static final String CLUSTER = "cluster object on stack";
         public static final String CLUSTER_REQUEST = "cluster request object on stack";
-        public static final String FLEX_SUBSCRIPTION = "the related flex subscription";
         public static final String USER = "the related user";
         public static final String NODE_COUNT = "node count of the stack";
         public static final String HARDWARE_INFO_RESPONSE = "hardware information where pairing hostmetadata with instancemetadata";
@@ -237,11 +236,11 @@ public class ModelDescriptions {
         public static final String STATUS_REASON = "status message of the cluster";
         public static final String CLUSTER_NAME = "name of the cluster";
         public static final String CLUSTER_ID = "id of the cluster";
-        public static final String CLUSTER_DEFINITION_ID = "cluster definition id for the cluster";
-        public static final String CLUSTER_DEFINITION_NAME = "cluster definition name for the cluster";
-        public static final String CLUSTER_DEFINITION = "cluster definition for the cluster";
+        public static final String BLUEPRINT_ID = "blueprint id for the cluster";
+        public static final String BLUEPRINT_NAME = "blueprint name for the cluster";
+        public static final String BLUEPRINT = "blueprint for the cluster";
         public static final String SHARED_SERVICE_REQUEST = "Shared service request";
-        public static final String VALIDATE_CLUSTER_DEFINITION = "cluster definition validation";
+        public static final String VALIDATE_BLUEPRINT = "blueprint validation";
         public static final String VALIDATE_REPOSITORIES = "ambari and stack repository validation";
         public static final String SHARED_SERVICE = "shared service for a specific stack";
         public static final String FILESYSTEM = "filesystem for a specific stack";
@@ -249,8 +248,8 @@ public class ModelDescriptions {
         public static final String MINUTES = "duration - how long the cluster is running in minutes (minus hours)";
         public static final String CLUSTER_EXPOSED_SERVICES = "cluster exposed services for topologies";
         public static final String CONFIG_STRATEGY = "config recommendation strategy, default value is 'ALWAYS_APPLY_DONT_OVERRIDE_CUSTOM_VALUES'";
-        public static final String CLUSTER_DEFINITION_INPUTS = "cluster definition inputs in the cluster";
-        public static final String CLUSTER_DEFINITION_CUSTOM_PROPERTIES = "cluster definition custom properties";
+        public static final String BLUEPRINT_INPUTS = "blueprint inputs in the cluster";
+        public static final String BLUEPRINT_CUSTOM_PROPERTIES = "blueprint custom properties";
         public static final String CUSTOM_CONTAINERS = "custom containers";
         public static final String CUSTOM_QUEUE = "custom queue for yarn orchestrator";
         public static final String EXECUTOR_TYPE = "executor type of cluster";
@@ -269,9 +268,12 @@ public class ModelDescriptions {
         public static final String STATUS_REQUEST = "request status";
         public static final String USERNAME_PASSWORD = "user details";
         public static final String AMBARI_REQUEST = "ambari specific requests";
+        public static final String CM_REQUEST = "cloudera manager specific requests";
         public static final String HOSTGROUPS = "collection of hostgroups";
         public static final String AMBARI_STACK_DETAILS = "details of the Ambari stack";
         public static final String AMBARI_REPO_DETAILS = "details of the Ambari package repository";
+        public static final String CM_REPO_DETAILS = "details of the Cloudera Manager package repository";
+        public static final String CM_PRODUCT_DETAILS = "list of Cloudera Manager product detials";
         public static final String AMBARI_DATABASE_ERROR = "result of Ambari database test";
         public static final String RDS_CONFIGS = "details of the external database for Hadoop components";
         public static final String LDAP_CONNECTION_RESULT = "result of Ldap connection test";
@@ -355,10 +357,16 @@ public class ModelDescriptions {
         public static final String DEFAULT_REGIOS = "default regions";
     }
 
-    public static class AmbariRepositoryDescription {
-        public static final String VERSION = "version of the Ambari";
-        public static final String AMBARI_BASE_URL = "url of the Ambari repository";
-        public static final String AMBARI_REPO_GPG_KEY = "gpg key of the Ambari repository";
+    public static class ClusterManagerRepositoryDescription {
+        public static final String VERSION = "version of the cluster manager";
+        public static final String BASE_URL = "url of the cluster manager repository";
+        public static final String REPO_GPG_KEY = "gpg key of the cluster manager repository";
+    }
+
+    public static class ClouderaManagerProductDescription {
+        public static final String NAME = "name of the Cloudera manager product";
+        public static final String VERSION = "version of the Cloudera manager product";
+        public static final String PARCEL = "parcel url of the Cloudera manager product";
     }
 
     public static class AmbariDatabaseDetailsDescription {
@@ -603,21 +611,8 @@ public class ModelDescriptions {
         public static final String IDS = "Node ID list of nodes that need replacement.";
     }
 
-    public static class SmartSenseSubscriptionModelDescription {
-        public static final String SUBSCRIPTION_ID = "Identifier of SmartSense subscription.";
-        public static final String AUTOGENERATED = "Flag of aut generated SmartSense subscription.";
-    }
-
     public static class HardwareModelDescription {
         public static final String METADATA = "Metadata of instances.";
-    }
-
-    public static class FlexSubscriptionModelDescription {
-        public static final String FLEX_SUBSCRIPTION_ID = "Identifier of Flex subscription.";
-        public static final String SMARTSENSE_SUBSCRIPTION_ID = "Identifier of SmartSense subscription Cloudbreak domain object json representation.";
-        public static final String SMARTSENSE_SUBSCRIPTION = "The associated SmartSense subscription Cloudbreak domain object json representation.";
-        public static final String IS_DEFAULT = "true if the flex subscription is the default one";
-        public static final String USED_FOR_CONTROLLER = "true if the flex subscription was used for the controller";
     }
 
     public static class StackAuthenticationBase {
@@ -678,6 +673,7 @@ public class ModelDescriptions {
         public static final String LATITUDE = "Location latitude of the environment.";
         public static final String KERBEROS_CONFIGS = "Name of Kerberos configs to be attached to the environment.";
         public static final String LOCATION_DISPLAY_NAME = "Display name of the location of the environment.";
+        public static final String NETWORK = "Network related specifics of the environment.";
     }
 
     public static class EnvironmentResponseModelDescription {
@@ -697,6 +693,7 @@ public class ModelDescriptions {
         public static final String DATALAKE_RESOURCES_NAMES = "Datalake cluster resources registered to the environment.";
         public static final String DATALAKE_RESOURCES = "Datalake cluster resources registered to the environment.";
         public static final String KERBEROS_CONFIGS = "Kerberos configs in the environment.";
+        public static final String NETWORK = "Network related specifics of the environment.";
     }
 
     public static class SecretResponseModelDescription {
@@ -709,5 +706,16 @@ public class ModelDescriptions {
         public static final String SERVICE_NAME = "Name of the datalake service";
         public static final String BLUEPRINT_PARAMS = "Bluepirnt parameters from the datalake services";
         public static final String COMPONENT_HOSTS = "Component hosts of the datalake services";
+    }
+
+    public static class EnvironmentNetworkDescription {
+        public static final String SUBNET_IDS = "Subnet ids of the specified networks";
+        public static final String AWS_SPECIFIC_PARAMETERS = "Subnet ids of the specified networks";
+        public static final String AZURE_SPECIFIC_PARAMETERS = "Subnet ids of the specified networks";
+        public static final String AWS_VPC_ID = "Subnet ids of the specified networks";
+        public static final String AZURE_RESOURCE_GROUP_NAME = "Subnet ids of the specified networks";
+        public static final String AZURE_NETWORK_ID = "Subnet ids of the specified networks";
+        public static final String AZURE_NO_PUBLIC_IP = "Subnet ids of the specified networks";
+        public static final String AZURE_NO_FIREWALL_RULES = "Subnet ids of the specified networks";
     }
 }

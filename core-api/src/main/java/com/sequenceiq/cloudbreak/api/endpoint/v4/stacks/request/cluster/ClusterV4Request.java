@@ -4,6 +4,9 @@ import java.util.HashSet;
 import java.util.Set;
 
 import javax.validation.Valid;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Pattern;
+import javax.validation.constraints.Size;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -11,10 +14,10 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.JsonEntity;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.ExecutorType;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ambari.AmbariV4Request;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.cm.ClouderaManagerV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.customcontainer.CustomContainerV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.gateway.GatewayV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.storage.CloudStorageV4Request;
-import com.sequenceiq.cloudbreak.doc.ModelDescriptions;
 import com.sequenceiq.cloudbreak.doc.ModelDescriptions.ClusterModelDescription;
 import com.sequenceiq.cloudbreak.doc.ModelDescriptions.StackModelDescription;
 
@@ -29,6 +32,18 @@ public class ClusterV4Request implements JsonEntity {
     @ApiModelProperty(hidden = true)
     private String name;
 
+    @Size(max = 15, min = 5, message = "The length of the username has to be in range of 5 to 15")
+    @Pattern(regexp = "(^[a-z][-a-z0-9]*[a-z0-9]$)",
+            message = "The username can only contain lowercase alphanumeric characters and hyphens and has start with an alphanumeric character")
+    @NotNull
+    @ApiModelProperty(value = StackModelDescription.USERNAME, required = true)
+    private String userName;
+
+    @NotNull
+    @Size(max = 100, min = 5, message = "The length of the password has to be in range of 5 to 100")
+    @ApiModelProperty(value = StackModelDescription.PASSWORD, required = true)
+    private String password;
+
     @ApiModelProperty(ClusterModelDescription.LDAP_CONFIG_NAME)
     private String ldapName;
 
@@ -41,6 +56,10 @@ public class ClusterV4Request implements JsonEntity {
     @Valid
     @ApiModelProperty(StackModelDescription.CLOUD_STORAGE)
     private CloudStorageV4Request cloudStorage;
+
+    @Valid
+    @ApiModelProperty(ClusterModelDescription.CM_REQUEST)
+    private ClouderaManagerV4Request cm;
 
     @Valid
     @ApiModelProperty(ClusterModelDescription.AMBARI_REQUEST)
@@ -57,8 +76,30 @@ public class ClusterV4Request implements JsonEntity {
     @ApiModelProperty(ClusterModelDescription.CUSTOM_QUEUE)
     private String customQueue;
 
-    @ApiModelProperty(ModelDescriptions.ClusterModelDescription.EXECUTOR_TYPE)
+    @ApiModelProperty(ClusterModelDescription.EXECUTOR_TYPE)
     private ExecutorType executorType = ExecutorType.DEFAULT;
+
+    @ApiModelProperty(ClusterModelDescription.BLUEPRINT_NAME)
+    private String blueprintName;
+
+    @ApiModelProperty(ClusterModelDescription.VALIDATE_BLUEPRINT)
+    private Boolean validateBlueprint = Boolean.TRUE;
+
+    public String getUserName() {
+        return userName;
+    }
+
+    public void setUserName(String userName) {
+        this.userName = userName;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
 
     public ExecutorType getExecutorType() {
         return executorType;
@@ -98,6 +139,14 @@ public class ClusterV4Request implements JsonEntity {
 
     public void setCloudStorage(CloudStorageV4Request cloudStorage) {
         this.cloudStorage = cloudStorage;
+    }
+
+    public ClouderaManagerV4Request getCm() {
+        return cm;
+    }
+
+    public void setCm(ClouderaManagerV4Request cm) {
+        this.cm = cm;
     }
 
     public AmbariV4Request getAmbari() {
@@ -147,4 +196,21 @@ public class ClusterV4Request implements JsonEntity {
     public void setCustomContainer(CustomContainerV4Request customContainer) {
         this.customContainer = customContainer;
     }
+
+    public String getBlueprintName() {
+        return blueprintName;
+    }
+
+    public void setBlueprintName(String blueprintName) {
+        this.blueprintName = blueprintName;
+    }
+
+    public Boolean getValidateBlueprint() {
+        return validateBlueprint;
+    }
+
+    public void setValidateBlueprint(Boolean validateBlueprint) {
+        this.validateBlueprint = validateBlueprint;
+    }
+
 }

@@ -6,9 +6,9 @@ import org.springframework.stereotype.Service;
 
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.DetailedStackStatus;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status;
-import com.sequenceiq.cloudbreak.core.flow2.stack.FlowMessageService;
-import com.sequenceiq.cloudbreak.core.flow2.stack.Msg;
+import com.sequenceiq.cloudbreak.core.flow2.stack.CloudbreakFlowMessageService;
 import com.sequenceiq.cloudbreak.domain.view.StackView;
+import com.sequenceiq.cloudbreak.message.Msg;
 import com.sequenceiq.cloudbreak.service.StackUpdater;
 import com.sequenceiq.cloudbreak.service.cluster.ClusterService;
 import com.sequenceiq.cloudbreak.util.StackUtil;
@@ -16,7 +16,7 @@ import com.sequenceiq.cloudbreak.util.StackUtil;
 @Service
 public class ClusterUpgradeService {
     @Inject
-    private FlowMessageService flowMessageService;
+    private CloudbreakFlowMessageService flowMessageService;
 
     @Inject
     private ClusterService clusterService;
@@ -29,19 +29,19 @@ public class ClusterUpgradeService {
 
     public void upgradeCluster(long stackId) {
         clusterService.updateClusterStatusByStackId(stackId, Status.UPDATE_IN_PROGRESS);
-        flowMessageService.fireEventAndLog(stackId, Msg.AMBARI_CLUSTER_UPGRADE, Status.UPDATE_IN_PROGRESS.name());
+        flowMessageService.fireEventAndLog(stackId, Msg.CLUSTER_UPGRADE, Status.UPDATE_IN_PROGRESS.name());
     }
 
     public void clusterUpgradeFinished(StackView stack) {
         Long stackId = stack.getId();
         clusterService.updateClusterStatusByStackId(stackId, Status.START_REQUESTED);
         stackUpdater.updateStackStatus(stackId, DetailedStackStatus.AVAILABLE, "Ambari is successfully upgraded.");
-        flowMessageService.fireEventAndLog(stackId, Msg.AMBARI_CLUSTER_UPGRADE_FINISHED, Status.AVAILABLE.name(), stackUtil.extractAmbariIp(stack));
+        flowMessageService.fireEventAndLog(stackId, Msg.CLUSTER_UPGRADE_FINISHED, Status.AVAILABLE.name(), stackUtil.extractClusterManagerIp(stack));
     }
 
     public void handleUpgradeClusterFailure(long stackId, String errorReason) {
         clusterService.updateClusterStatusByStackId(stackId, Status.UPDATE_FAILED, errorReason);
         stackUpdater.updateStackStatus(stackId, DetailedStackStatus.AVAILABLE);
-        flowMessageService.fireEventAndLog(stackId, Msg.AMBARI_CLUSTER_UPGRADE_FAILED, Status.UPDATE_FAILED.name(), errorReason);
+        flowMessageService.fireEventAndLog(stackId, Msg.CLUSTER_UPGRADE_FAILED, Status.UPDATE_FAILED.name(), errorReason);
     }
 }

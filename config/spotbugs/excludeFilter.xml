@@ -20,6 +20,10 @@
         <Bug pattern="OBL_UNSATISFIED_OBLIGATION" />
     </Match>
     <Match>
+        <!-- False positive: https://github.com/spotbugs/spotbugs/issues/756 -->
+        <Bug pattern="RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE" />
+    </Match>
+    <Match>
         <Class name="~.*MapperImpl$"/>
     </Match>
     <Match>
@@ -27,5 +31,17 @@
     </Match>
     <Match>
         <Package name="~org\.apache\.cb\.yarn.*"/>
+    </Match>
+    <Match>
+        <Package name="~com\.cloudera\.thunderhead\.service\.authorization.*"/>
+    </Match>
+    <Match>
+        <Package name="~com\.cloudera\.thunderhead\.service\.usermanagement.*"/>
+    </Match>
+    <Match>
+        <Package name="~com\.cloudera\.thunderhead\.service\.authorization.*"/>
+    </Match>
+    <Match>
+        <Package name="~com\.cloudera\.thunderhead\.service\.common.*"/>
     </Match>
 </FindBugsFilter>

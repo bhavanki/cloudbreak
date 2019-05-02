@@ -1,6 +1,8 @@
 package com.sequenceiq.cloudbreak.structuredevent.db;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 import javax.transaction.Transactional;
 import javax.transaction.Transactional.TxType;
@@ -9,9 +11,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.sequenceiq.cloudbreak.aspect.DisableHasPermission;
+import com.sequenceiq.cloudbreak.aspect.workspace.CheckPermissionsByReturnValue;
 import com.sequenceiq.cloudbreak.aspect.workspace.CheckPermissionsByWorkspace;
 import com.sequenceiq.cloudbreak.aspect.workspace.CheckPermissionsByWorkspaceId;
-import com.sequenceiq.cloudbreak.aspect.workspace.CheckPermissionsByReturnValue;
 import com.sequenceiq.cloudbreak.aspect.workspace.DisableCheckPermissions;
 import com.sequenceiq.cloudbreak.aspect.workspace.WorkspaceResourceType;
 import com.sequenceiq.cloudbreak.authorization.WorkspaceResource;
@@ -54,12 +56,17 @@ public interface StructuredEventRepository extends WorkspaceResourceRepository<S
     List<StructuredEventEntity> findAllWithoutWorkspaceOrUser();
 
     @Override
-    default StructuredEventEntity findByNameAndWorkspace(String name, Workspace workspace) {
+    default Optional<StructuredEventEntity> findByNameAndWorkspace(String name, Workspace workspace) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    default StructuredEventEntity findByNameAndWorkspaceId(String name, Long workspaceId) {
+    default Optional<StructuredEventEntity> findByNameAndWorkspaceId(String name, Long workspaceId) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    default Set<StructuredEventEntity> findByNameInAndWorkspaceId(Set<String> name, Long workspaceId) {
         throw new UnsupportedOperationException();
     }
 }

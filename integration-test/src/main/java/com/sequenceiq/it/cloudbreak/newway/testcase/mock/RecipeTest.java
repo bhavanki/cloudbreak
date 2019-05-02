@@ -1,154 +1,193 @@
 package com.sequenceiq.it.cloudbreak.newway.testcase.mock;
 
-import static com.sequenceiq.cloudbreak.api.endpoint.v4.recipes.requests.RecipeV4Type.POST_AMBARI_START;
-import static com.sequenceiq.cloudbreak.api.endpoint.v4.recipes.requests.RecipeV4Type.POST_CLUSTER_INSTALL;
-import static com.sequenceiq.cloudbreak.api.endpoint.v4.recipes.requests.RecipeV4Type.PRE_AMBARI_START;
-import static com.sequenceiq.cloudbreak.api.endpoint.v4.recipes.requests.RecipeV4Type.PRE_TERMINATION;
-import static com.sequenceiq.it.cloudbreak.newway.cloud.HostGroupType.COMPUTE;
-import static com.sequenceiq.it.cloudbreak.newway.cloud.HostGroupType.WORKER;
-import static com.sequenceiq.it.cloudbreak.newway.mock.model.SaltMock.SALT_RUN;
+import static com.sequenceiq.it.cloudbreak.newway.context.RunningParameter.key;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.Matchers.hasProperty;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.core.IsCollectionContaining.hasItem;
+import static org.junit.Assert.assertThat;
+
+import java.util.Collection;
 
 import javax.inject.Inject;
+import javax.ws.rs.BadRequestException;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpMethod;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import com.google.api.client.repackaged.org.apache.commons.codec.binary.Base64;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.recipes.requests.RecipeV4Type;
-import com.sequenceiq.it.cloudbreak.newway.RandomNameCreator;
-import com.sequenceiq.it.cloudbreak.newway.Stack;
-import com.sequenceiq.it.cloudbreak.newway.entity.stack.StackTestDto;
-import com.sequenceiq.it.cloudbreak.newway.action.stack.StackScalePostAction;
-import com.sequenceiq.it.cloudbreak.newway.assertion.MockVerification;
-import com.sequenceiq.it.cloudbreak.newway.client.LdapConfigTestClient;
-import com.sequenceiq.it.cloudbreak.newway.context.MockedTestContext;
+import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
+import com.sequenceiq.it.cloudbreak.newway.client.RecipeTestClient;
+import com.sequenceiq.it.cloudbreak.newway.context.Description;
 import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
-import com.sequenceiq.it.cloudbreak.newway.entity.ClusterEntity;
-import com.sequenceiq.it.cloudbreak.newway.entity.InstanceGroupEntity;
-import com.sequenceiq.it.cloudbreak.newway.entity.ldap.LdapConfigTestDto;
-import com.sequenceiq.it.cloudbreak.newway.entity.recipe.Recipe;
-import com.sequenceiq.it.cloudbreak.newway.entity.recipe.RecipeEntity;
+import com.sequenceiq.it.cloudbreak.newway.dto.recipe.RecipeTestDto;
 import com.sequenceiq.it.cloudbreak.newway.testcase.AbstractIntegrationTest;
 
 public class RecipeTest extends AbstractIntegrationTest {
 
-    private static final int NODE_COUNT = 1;
-
-    private static final String INSTANCE_GROUP_ID = "ig";
-
-    private static final String HIGHSTATE = "state.highstate";
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(RecipeTest.class);
-
-    private static final String RECIPE_CONTENT = Base64.encodeBase64String("#!/bin/bash\necho ALMAA".getBytes());
-
     @Inject
-    private LdapConfigTestClient ldapConfigTestClient;
+    private RecipeTestClient recipeTestClient;
 
-    @Inject
-    private RandomNameCreator creator;
-
-    @BeforeMethod
-    public void beforeMethod(Object[] data) {
-        minimalSetupForClusterCreation((TestContext) data[0]);
+    @Override
+    protected void setupTest(TestContext testContext) {
+        createDefaultUser(testContext);
     }
 
-    @AfterMethod(alwaysRun = true)
-    public void tear(Object[] data) {
-        ((TestContext) data[0]).cleanupTestContextEntity();
-    }
-
-    @Test(dataProvider = "dataProviderForNonPreTerminationRecipeTypes")
-    public void testRecipeNotPreTerminationHasGotHighStateOnCluster(TestContext testContext, RecipeV4Type type, int executionTime) {
-        LOGGER.info("testing recipe execution for type: {}", type.name());
-        String recipeName = creator.getRandomNameForResource();
+    @Test(dataProvider = TEST_CONTEXT)
+    @Description(
+            given = "a valid recipe request",
+            when = "create recipe",
+            then = "recipe created")
+    public void testCreateValidRecipe(TestContext testContext) {
         testContext
-                .given(RecipeEntity.class).withName(recipeName).withContent(RECIPE_CONTENT).withRecipeType(type)
-                .when(Recipe.postV4())
-                .given(INSTANCE_GROUP_ID, InstanceGroupEntity.class).withHostGroup(WORKER).withNodeCount(NODE_COUNT).withRecipes(recipeName)
-                .given(StackTestDto.class).replaceInstanceGroups(INSTANCE_GROUP_ID)
-                .when(Stack.postV4())
-                .await(STACK_AVAILABLE)
-                .then(MockVerification.verify(HttpMethod.POST, SALT_RUN).bodyContains(HIGHSTATE).atLeast(executionTime))
+                .given(RecipeTestDto.class)
+                .when(recipeTestClient.createV4())
                 .validate();
     }
 
-    @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
-    public void testRecipePreTerminationRecipeHasGotHighStateOnCluster(TestContext testContext) {
-        String recipeName = creator.getRandomNameForResource();
+    @Test(dataProvider = TEST_CONTEXT)
+    @Description(
+            given = "a valid recipe request",
+            when = "create recipe and then delete and create again",
+            then = "recipe created")
+    public void testCreateDeleteValidCreateAgain(TestContext testContext) {
         testContext
-                .given(RecipeEntity.class).withName(recipeName).withContent(RECIPE_CONTENT).withRecipeType(PRE_TERMINATION)
-                .when(Recipe.postV4())
-                .given(INSTANCE_GROUP_ID, InstanceGroupEntity.class).withHostGroup(WORKER).withNodeCount(NODE_COUNT).withRecipes(recipeName)
-                .given(StackTestDto.class).replaceInstanceGroups(INSTANCE_GROUP_ID)
-                .when(Stack.postV4())
-                .await(STACK_AVAILABLE)
-                .then(MockVerification.verify(HttpMethod.POST, SALT_RUN).bodyContains(HIGHSTATE).exactTimes(2))
-                .when(Stack.deleteV4())
-                .await(STACK_DELETED)
-                .then(MockVerification.verify(HttpMethod.POST, SALT_RUN).bodyContains(HIGHSTATE).exactTimes(3))
+                .given(RecipeTestDto.class)
+                .when(recipeTestClient.createV4())
+                .when(recipeTestClient.deleteV4())
+                .when(recipeTestClient.createV4())
                 .validate();
     }
 
-    @Test(dataProvider = TEST_CONTEXT_WITH_MOCK, description = "Post Ambari start recipes executed when LDAP config is present, because later the LDAP sync is "
-            + "hooked for this salt state in the top.sls")
-    public void testWhenThereIsNoRecipeButLdapHasAttachedThenThePostAmbariRecipeShouldRunWhichResultThreeHighStateCall(TestContext testContext) {
-        String ldapName = creator.getRandomNameForResource();
+    @Test(dataProvider = TEST_CONTEXT)
+    @Description(
+            given = "an invalid recipe request with specific characters in name",
+            when = "create recipe",
+            then = "getting a BadRequestException")
+    public void testCreateSpecialNameRecipe(TestContext testContext) {
+        String spacialName = resourcePropertyProvider().getName();
         testContext
-                .given(LdapConfigTestDto.class).withName(ldapName)
-                .when(ldapConfigTestClient.post())
-                .given(StackTestDto.class).withCluster(new ClusterEntity(testContext).valid().withLdapConfigName(ldapName))
-                .when(Stack.postV4())
-                .await(STACK_AVAILABLE)
-                .then(MockVerification.verify(HttpMethod.POST, SALT_RUN).bodyContains(HIGHSTATE).exactTimes(3))
+                .given(RecipeTestDto.class)
+                .withName(resourcePropertyProvider().getInvalidName())
+                .when(recipeTestClient.createV4(), key(spacialName))
+                .expect(BadRequestException.class, key(spacialName)
+                        .withExpectedMessage("The recipe's name can only contain lowercase alphanumeric characters and hyphens and has start "
+                                + "with an alphanumeric character"))
                 .validate();
     }
 
-    @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
-    public void testWhenClusterGetUpScaledThenPostClusterInstallRecipeShouldBeExecuted(TestContext testContext) {
-        String recipeName = creator.getRandomNameForResource();
-        testContext
-                .given(RecipeEntity.class).withName(recipeName).withContent(RECIPE_CONTENT).withRecipeType(POST_CLUSTER_INSTALL)
-                .when(Recipe.postV4())
-                .given(INSTANCE_GROUP_ID, InstanceGroupEntity.class).withHostGroup(WORKER).withNodeCount(NODE_COUNT).withRecipes(recipeName)
-                .given(StackTestDto.class).replaceInstanceGroups(INSTANCE_GROUP_ID)
-                .when(Stack.postV4())
-                .await(STACK_AVAILABLE)
-                .when(StackScalePostAction.valid().withDesiredCount(2))
-                .await(STACK_AVAILABLE)
-                .then(MockVerification.verify(HttpMethod.POST, SALT_RUN).bodyContains(HIGHSTATE).exactTimes(4))
+    @Test(dataProvider = TEST_CONTEXT)
+    @Description(
+            given = "a valid recipe request",
+            when = "create recipe twice",
+            then = "getting a BadRequestException")
+    public void testCreateAgainRecipe(TestContext testContext) {
+        String againName = resourcePropertyProvider().getName();
+        testContext.given(RecipeTestDto.class)
+                .when(recipeTestClient.createV4())
+                .when(recipeTestClient.createV4(), key(againName))
+                .expect(BadRequestException.class, key(againName)
+                        .withExpectedMessage("recipe already exists with name '"))
                 .validate();
     }
 
-    @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
-    public void testWhenRecipeProvidedToHostGroupAndAnotherHostGroupGetUpScaledThenThereIsNoFurtherRecipeExecutionOnTheNewNodeBesideTheDefaultOnes(
-            TestContext testContext) {
-        String recipeName = creator.getRandomNameForResource();
+    @Test(dataProvider = TEST_CONTEXT)
+    @Description(
+            given = "an invalid recipe request with too short name",
+            when = "create recipe",
+            then = "getting a BadRequestException")
+    public void testCreateInvalidRecipeShortName(TestContext testContext) {
+        String shortName = resourcePropertyProvider().getName();
         testContext
-                .given(RecipeEntity.class).withName(recipeName).withContent(RECIPE_CONTENT).withRecipeType(POST_AMBARI_START)
-                .when(Recipe.postV4())
-                .given(INSTANCE_GROUP_ID, InstanceGroupEntity.class).withHostGroup(COMPUTE).withNodeCount(NODE_COUNT).withRecipes(recipeName)
-                .given(StackTestDto.class).replaceInstanceGroups(INSTANCE_GROUP_ID)
-                .when(Stack.postV4())
-                .await(STACK_AVAILABLE)
-                .when(StackScalePostAction.valid().withDesiredCount(2))
-                .await(STACK_AVAILABLE)
-                .then(MockVerification.verify(HttpMethod.POST, SALT_RUN).bodyContains(HIGHSTATE).exactTimes(5))
+                .given(RecipeTestDto.class)
+                .withName(getLongNameGenerator().stringGenerator(3))
+                .when(recipeTestClient.createV4(), key(shortName))
+                .expect(BadRequestException.class, key(shortName)
+                        .withExpectedMessage("The length of the recipe's name has to be in range of 5 to 100"))
                 .validate();
     }
 
-    @DataProvider(name = "dataProviderForNonPreTerminationRecipeTypes")
-    public Object[][] getData() {
-        return new Object[][]{
-                {getBean(MockedTestContext.class), PRE_AMBARI_START, 3},
-                {getBean(MockedTestContext.class), POST_AMBARI_START, 3},
-                {getBean(MockedTestContext.class), POST_CLUSTER_INSTALL, 2}
-        };
+    @Test(dataProvider = TEST_CONTEXT)
+    @Description(
+            given = "an invalid recipe request with too long name",
+            when = "create recipe",
+            then = "getting a BadRequestException")
+    public void testCreateInvalidRecipeLongName(TestContext testContext) {
+        String longName = resourcePropertyProvider().getName();
+        testContext
+                .given(RecipeTestDto.class)
+                .withName(getLongNameGenerator().stringGenerator(101))
+                .when(recipeTestClient.createV4(), key(longName))
+                .expect(BadRequestException.class, key(longName)
+                        .withExpectedMessage("The length of the recipe's name has to be in range of 5 to 100"))
+                .validate();
+    }
+
+    @Test(dataProvider = TEST_CONTEXT)
+    @Description(
+            given = "an invalid recipe request with too long description",
+            when = "create recipe",
+            then = "getting a BadRequestException")
+    public void testCreateInvalidRecipeLongDescription(TestContext testContext) {
+        String longDesc = resourcePropertyProvider().getName();
+        testContext
+                .given(RecipeTestDto.class)
+                .withDescription(getLongNameGenerator().stringGenerator(1001))
+                .when(recipeTestClient.createV4(), key(longDesc))
+                .expect(BadRequestException.class, key(longDesc)
+                        .withExpectedMessage("size must be between 0 and 1000"))
+                .validate();
+    }
+
+    @Test(dataProvider = TEST_CONTEXT)
+    @Description(
+            given = "a deleted valid recipe",
+            when = "list recipes",
+            then = "recipe is not present")
+    public void testCreateDeleteValidAndList(TestContext testContext) {
+        String recipeName = resourcePropertyProvider().getName();
+        testContext
+                .given(RecipeTestDto.class)
+                .withName(recipeName)
+                .when(recipeTestClient.createV4())
+                .when(recipeTestClient.deleteV4())
+
+                .when(recipeTestClient.listV4());
+
+        testContext
+                .given(RecipeTestDto.class)
+                .when((tc, recipeTestDto, cc) -> assertRecipesEmpty(tc, recipeTestDto, cc, recipeName))
+                .validate();
+    }
+
+    @Test(dataProvider = TEST_CONTEXT)
+    @Description(
+            given = "a valid recipe",
+            when = "list recipes",
+            then = "recipe is present")
+    public void testCreateValidAndList(TestContext testContext) {
+        String recipeName = resourcePropertyProvider().getName();
+        testContext
+                .given(RecipeTestDto.class)
+                .withName(recipeName)
+                .when(recipeTestClient.createV4())
+
+                .when(recipeTestClient.listV4());
+
+        testContext
+                .given(RecipeTestDto.class)
+                .when((tc, recipeTestDto, cc) -> assertRecipesContainsElement(tc, recipeTestDto, cc, recipeName))
+                .validate();
+    }
+
+    private RecipeTestDto assertRecipesEmpty(TestContext tc, RecipeTestDto recipeTestDto, CloudbreakClient cc, String recipeName) {
+        Collection<?> foundRecipes = recipeTestDto.getSimpleResponses().getResponses();
+        assertThat(foundRecipes, not(hasItem(hasProperty("name", is(recipeName)))));
+        return recipeTestDto;
+    }
+
+    private RecipeTestDto assertRecipesContainsElement(TestContext tc, RecipeTestDto recipeTestDto, CloudbreakClient cc, String recipeName) {
+        Collection<?> foundRecipes = recipeTestDto.getSimpleResponses().getResponses();
+        assertThat(foundRecipes, hasItem(hasProperty("name", is(recipeName))));
+        return recipeTestDto;
     }
 
 }

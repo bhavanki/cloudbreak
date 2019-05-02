@@ -20,18 +20,24 @@ import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
 
 @Component
 public class WaitUtilForMultipleStatuses {
-    private static final Logger LOGGER = LoggerFactory.getLogger(WaitUtil.class);
 
-    private static final int MAX_RETRY = 360;
+    private static final Logger LOGGER = LoggerFactory.getLogger(WaitUtilForMultipleStatuses.class);
+
+    @Value("${integrationtest.testsuite.maxRetry:1800}")
+    private int maxRetry;
 
     @Value("${integrationtest.testsuite.pollingInterval:1000}")
     private long pollingInterval;
 
-    public Map<String, String> waitAndCheckStatuses(CloudbreakClient cloudbreakClient, String stackName, Map<String, Status> desiredStatuses) {
-        Map<String, String> ret = new HashMap<>();
+    public Map<String, String> waitAndCheckStatuses(CloudbreakClient cloudbreakClient, String stackName, Map<String, Status> desiredStatuses,
+            long pollingInterval) {
+        Map<String, String> errors = new HashMap<>();
         WaitResult waitResult = WaitResult.SUCCESSFUL;
         for (int retryBecauseOfWrongStatusHandlingInCB = 0; retryBecauseOfWrongStatusHandlingInCB < 3; retryBecauseOfWrongStatusHandlingInCB++) {
-            waitResult = waitForStatuses(cloudbreakClient, stackName, desiredStatuses);
+            waitResult = waitForStatuses(cloudbreakClient, stackName, desiredStatuses, Math.max(this.pollingInterval, pollingInterval));
+            if (waitResult == WaitResult.FAILED || waitResult == WaitResult.TIMEOUT) {
+                break;
+            }
         }
         if (waitResult == WaitResult.FAILED) {
             StringBuilder builder = new StringBuilder("The stack has failed: ").append(System.lineSeparator());
@@ -41,12 +47,12 @@ public class WaitUtilForMultipleStatuses {
                 desiredStatuses.forEach((key, value) -> {
                     Status subStatus = getStatus(status, key);
                     if (subStatus != null) {
-                        ret.put(key, subStatus.name());
+                        errors.put(key, subStatus.name());
                     }
                 });
 
-                ret.forEach((key, value) -> {
-                    builder.append(key).append(',').append(value).append(System.lineSeparator());
+                errors.forEach((key, value) -> {
+                    builder.append(key).append(": ").append(value).append(System.lineSeparator());
                 });
                 builder.append("statusReason: ").append(status.getStatusReason());
             }
@@ -59,11 +65,11 @@ public class WaitUtilForMultipleStatuses {
             if (status != null) {
                 String statusReason = status.getStatusReason();
                 if (statusReason != null) {
-                    ret.put("statusReason", statusReason);
+                    errors.put("statusReason", statusReason);
                 }
             }
         }
-        return ret;
+        return errors;
     }
 
     private Status getStatus(StackStatusV4Response status, String fieldName) {
@@ -79,15 +85,15 @@ public class WaitUtilForMultipleStatuses {
         return result;
     }
 
-    private WaitResult waitForStatuses(CloudbreakClient cloudbreakClient, String stackName, Map<String, Status> desiredStatuses) {
+    private WaitResult waitForStatuses(CloudbreakClient cloudbreakClient, String stackName, Map<String, Status> desiredStatuses, long pollingInterval) {
         WaitResult waitResult = WaitResult.SUCCESSFUL;
         Map<String, Status> currentStatuses = new HashMap<>();
 
         int retryCount = 0;
-        while (!checkStatuses(currentStatuses, desiredStatuses) && !checkFailedStatuses(currentStatuses) && retryCount < MAX_RETRY) {
+        while (!checkStatuses(currentStatuses, desiredStatuses) && !checkFailedStatuses(currentStatuses) && retryCount < maxRetry) {
             LOGGER.info("Waiting for status(es) {}, stack id: {}, current status(es) {} ...", desiredStatuses, stackName, currentStatuses);
 
-            sleep();
+            sleep(pollingInterval);
             try {
                 StackStatusV4Response status = cloudbreakClient.getCloudbreakClient().stackV4Endpoint()
                         .getStatusByName(cloudbreakClient.getWorkspaceId(), stackName);
@@ -116,7 +122,7 @@ public class WaitUtilForMultipleStatuses {
                 || checkNotExpectedDelete(currentStatuses, desiredStatuses)) {
             waitResult = WaitResult.FAILED;
             LOGGER.info("Desired status(es) are {} for {} but status(es) are {}", desiredStatuses, stackName, currentStatuses);
-        } else if (retryCount == MAX_RETRY) {
+        } else if (retryCount == maxRetry) {
             waitResult = WaitResult.TIMEOUT;
             LOGGER.info("Timeout: Desired tatus(es) are {} for {} but status(es) are {}", desiredStatuses, stackName, currentStatuses);
         } else {
@@ -125,7 +131,7 @@ public class WaitUtilForMultipleStatuses {
         return waitResult;
     }
 
-    private void sleep() {
+    private void sleep(long pollingInterval) {
         try {
             Thread.sleep(pollingInterval);
         } catch (InterruptedException e) {

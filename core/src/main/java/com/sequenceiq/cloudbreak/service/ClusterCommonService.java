@@ -5,6 +5,7 @@ import static com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status.MAINTENANC
 
 import java.util.HashSet;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 import javax.inject.Inject;
@@ -20,24 +21,25 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.UpdateClusterV4R
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.UserNamePasswordV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ambari.stackrepository.StackRepositoryV4Request;
 import com.sequenceiq.cloudbreak.api.util.ConverterUtil;
-import com.sequenceiq.cloudbreak.clusterdefinition.validation.AmbariBlueprintValidator;
+import com.sequenceiq.cloudbreak.blueprint.validation.AmbariBlueprintValidator;
 import com.sequenceiq.cloudbreak.cloud.model.component.StackRepoDetails;
 import com.sequenceiq.cloudbreak.common.type.ResourceEvent;
 import com.sequenceiq.cloudbreak.controller.exception.BadRequestException;
-import com.sequenceiq.cloudbreak.domain.ClusterDefinition;
+import com.sequenceiq.cloudbreak.domain.Blueprint;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.host.HostGroup;
 import com.sequenceiq.cloudbreak.domain.workspace.User;
 import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
 import com.sequenceiq.cloudbreak.logger.MDCBuilder;
+import com.sequenceiq.cloudbreak.message.CloudbreakMessagesService;
 import com.sequenceiq.cloudbreak.service.TransactionService.TransactionExecutionException;
 import com.sequenceiq.cloudbreak.service.TransactionService.TransactionRuntimeExecutionException;
+import com.sequenceiq.cloudbreak.service.blueprint.BlueprintService;
 import com.sequenceiq.cloudbreak.service.cluster.ClusterService;
 import com.sequenceiq.cloudbreak.service.decorator.HostGroupDecorator;
-import com.sequenceiq.cloudbreak.service.events.CloudbreakEventService;
+import com.sequenceiq.cloudbreak.service.event.CloudbreakEventService;
 import com.sequenceiq.cloudbreak.service.hostgroup.HostGroupService;
-import com.sequenceiq.cloudbreak.service.messages.CloudbreakMessagesService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
 
 @Service
@@ -68,6 +70,9 @@ public class ClusterCommonService {
     @Inject
     private CloudbreakMessagesService messagesService;
 
+    @Inject
+    private BlueprintService blueprintService;
+
     public void put(Long stackId, UpdateClusterV4Request updateJson, User user, Workspace workspace) {
         Stack stack = stackService.getById(stackId);
         MDCBuilder.buildMdcContext(stack);
@@ -77,7 +82,7 @@ public class ClusterCommonService {
         } else if (updateJson.getStatus() != null) {
             LOGGER.debug("Cluster status update request received. Stack id:  {}, status: {} ", stackId, updateJson.getStatus());
             clusterService.updateStatus(stackId, updateJson.getStatus());
-        } else if (updateJson.getClusterDefinitionName() != null && updateJson.getHostgroups() != null && stack.getCluster().isCreateFailed()) {
+        } else if (updateJson.getBlueprintName() != null && updateJson.getHostgroups() != null && stack.getCluster().isCreateFailed()) {
             LOGGER.debug("Cluster rebuild request received. Stack id:  {}", stackId);
             try {
                 recreateCluster(stack, updateJson, user, workspace);
@@ -119,13 +124,17 @@ public class ClusterCommonService {
                     stack.getStatus()));
         }
         LOGGER.debug("Cluster host adjustment request received. Stack id: {} ", stackId);
-        ClusterDefinition clusterDefinition = stack.getCluster().getClusterDefinition();
-        HostGroup hostGroup = hostGroupService.getByClusterIdAndName(stack.getCluster().getId(), updateJson.getHostGroupAdjustment().getHostGroup());
-        if (hostGroup == null) {
+        Blueprint blueprint = stack.getCluster().getBlueprint();
+        Optional<HostGroup> hostGroup = hostGroupService.findHostGroupInClusterByName(stack.getCluster().getId(),
+                updateJson.getHostGroupAdjustment().getHostGroup());
+        if (hostGroup.isEmpty()) {
             throw new BadRequestException(String.format("Host group '%s' not found or not member of the cluster '%s'",
                     updateJson.getHostGroupAdjustment().getHostGroup(), stack.getName()));
         }
-        ambariBlueprintValidator.validateHostGroupScalingRequest(clusterDefinition, hostGroup, updateJson.getHostGroupAdjustment().getScalingAdjustment());
+        if (blueprintService.isAmbariBlueprint(blueprint)) {
+            ambariBlueprintValidator.validateHostGroupScalingRequest(blueprint, hostGroup.get(),
+                    updateJson.getHostGroupAdjustment().getScalingAdjustment());
+        }
         clusterService.updateHosts(stackId, updateJson.getHostGroupAdjustment());
     }
 
@@ -141,7 +150,7 @@ public class ClusterCommonService {
         if (stackDetails != null) {
             stackRepoDetails = converterUtil.convert(stackDetails, StackRepoDetails.class);
         }
-        clusterService.recreate(stack, updateCluster.getClusterDefinitionName(), hostGroups, updateCluster.getValidateClusterDefinition(), stackRepoDetails,
+        clusterService.recreate(stack, updateCluster.getBlueprintName(), hostGroups, updateCluster.getValidateBlueprint(), stackRepoDetails,
                 updateCluster.getKerberosPassword(), updateCluster.getKerberosPrincipal());
     }
 

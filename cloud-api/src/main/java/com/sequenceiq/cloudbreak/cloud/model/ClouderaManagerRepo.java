@@ -11,7 +11,7 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 @JsonInclude(Include.NON_NULL)
 public class ClouderaManagerRepo {
 
-    private Boolean predefined;
+    private Boolean predefined = Boolean.FALSE;
 
     private String version;
 
@@ -49,6 +49,26 @@ public class ClouderaManagerRepo {
 
     public void setGpgKeyUrl(String gpgKeyUrl) {
         this.gpgKeyUrl = gpgKeyUrl;
+    }
+
+    public ClouderaManagerRepo withPredefined(Boolean predefined) {
+        setPredefined(predefined);
+        return this;
+    }
+
+    public ClouderaManagerRepo withVersion(String version) {
+        setVersion(version);
+        return this;
+    }
+
+    public ClouderaManagerRepo withBaseUrl(String baseUrl) {
+        setBaseUrl(baseUrl);
+        return this;
+    }
+
+    public ClouderaManagerRepo withGpgKeyUrl(String gpgKeyUrl) {
+        setGpgKeyUrl(gpgKeyUrl);
+        return this;
     }
 
     public Map<String, Object> asMap() {

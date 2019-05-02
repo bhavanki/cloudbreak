@@ -4,6 +4,7 @@ import static com.sequenceiq.cloudbreak.converter.util.ExceptionMessageFormatter
 
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
@@ -13,6 +14,7 @@ import javax.inject.Inject;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import com.sequenceiq.cloudbreak.api.endpoint.v4.common.mappable.CloudPlatform;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.HostGroupV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.StackValidationV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.network.NetworkV4Request;
@@ -22,7 +24,8 @@ import com.sequenceiq.cloudbreak.cloud.PlatformParametersConsts;
 import com.sequenceiq.cloudbreak.cloud.model.Platform;
 import com.sequenceiq.cloudbreak.controller.exception.BadRequestException;
 import com.sequenceiq.cloudbreak.converter.AbstractConversionServiceAwareConverter;
-import com.sequenceiq.cloudbreak.domain.ClusterDefinition;
+import com.sequenceiq.cloudbreak.converter.v4.environment.network.EnvironmentNetworkConverter;
+import com.sequenceiq.cloudbreak.domain.Blueprint;
 import com.sequenceiq.cloudbreak.domain.Credential;
 import com.sequenceiq.cloudbreak.domain.Network;
 import com.sequenceiq.cloudbreak.domain.stack.StackValidation;
@@ -32,7 +35,7 @@ import com.sequenceiq.cloudbreak.domain.view.EnvironmentView;
 import com.sequenceiq.cloudbreak.domain.workspace.User;
 import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
 import com.sequenceiq.cloudbreak.service.CloudbreakRestRequestThreadLocalService;
-import com.sequenceiq.cloudbreak.service.clusterdefinition.ClusterDefinitionService;
+import com.sequenceiq.cloudbreak.service.blueprint.BlueprintService;
 import com.sequenceiq.cloudbreak.service.credential.CredentialService;
 import com.sequenceiq.cloudbreak.service.environment.EnvironmentViewService;
 import com.sequenceiq.cloudbreak.service.network.NetworkService;
@@ -44,7 +47,7 @@ import com.sequenceiq.cloudbreak.service.workspace.WorkspaceService;
 public class StackValidationV4RequestToStackValidationConverter extends AbstractConversionServiceAwareConverter<StackValidationV4Request, StackValidation> {
 
     @Inject
-    private ClusterDefinitionService clusterDefinitionService;
+    private BlueprintService blueprintService;
 
     @Inject
     private NetworkService networkService;
@@ -70,6 +73,9 @@ public class StackValidationV4RequestToStackValidationConverter extends Abstract
     @Inject
     private CloudbreakRestRequestThreadLocalService restRequestThreadLocalService;
 
+    @Inject
+    private Map<CloudPlatform, EnvironmentNetworkConverter> environmentNetworkConverterMap;
+
     @Override
     public StackValidation convert(StackValidationV4Request stackValidationRequest) {
         StackValidation stackValidation = new StackValidation();
@@ -80,8 +86,8 @@ public class StackValidationV4RequestToStackValidationConverter extends Abstract
         User user = userService.getOrCreate(restRequestThreadLocalService.getCloudbreakUser());
         Workspace workspace = workspaceService.get(restRequestThreadLocalService.getRequestedWorkspaceId(), user);
         formatAccessDeniedMessage(
-                () -> validateClusterDefinition(stackValidationRequest, stackValidation, workspace),
-                "clusterdefinition", stackValidationRequest.getClusterDefinitionName()
+                () -> validateBlueprint(stackValidationRequest, stackValidation, workspace),
+                "blueprint", stackValidationRequest.getBlueprintName()
         );
         formatAccessDeniedMessage(
                 () -> validateEnvironment(stackValidationRequest, stackValidation, workspace),
@@ -99,17 +105,13 @@ public class StackValidationV4RequestToStackValidationConverter extends Abstract
         return stackValidation;
     }
 
-    private void validateNetwork(Long networkId, NetworkV4Request networkRequest, StackValidation stackValidation) {
-        SpecialParameters specialParameters =
-                cloudParameterCache.getPlatformParameters().get(Platform.platform(stackValidation.getCredential().cloudPlatform())).specialParameters();
-        if (networkId != null) {
-            Network network = networkService.get(networkId);
-            stackValidation.setNetwork(network);
-        } else if (networkRequest != null) {
-            Network network = converterUtil.convert(networkRequest, Network.class);
-            stackValidation.setNetwork(network);
-        } else if (specialParameters.getSpecialParameters().get(PlatformParametersConsts.NETWORK_IS_MANDATORY)) {
-            throw new BadRequestException("Network is not configured for the validation request!");
+    private void validateBlueprint(StackValidationV4Request stackValidationRequest, StackValidation stackValidation, Workspace workspace) {
+        Set<Blueprint> allAvailableInWorkspace = blueprintService.getAllAvailableInWorkspace(workspace);
+        if (stackValidationRequest.getBlueprintName() == null) {
+            throw new BadRequestException("Cluster definition is not configured for the validation request!");
+        }
+        if (stackValidationRequest.getBlueprintName() != null) {
+            selectBlueprint(allAvailableInWorkspace, stackValidation, cd -> cd.getName().equals(stackValidationRequest.getBlueprintName()));
         }
     }
 
@@ -130,13 +132,27 @@ public class StackValidationV4RequestToStackValidationConverter extends Abstract
         }
     }
 
-    private void validateClusterDefinition(StackValidationV4Request stackValidationRequest, StackValidation stackValidation, Workspace workspace) {
-        Set<ClusterDefinition> allAvailableInWorkspace = clusterDefinitionService.getAllAvailableInWorkspace(workspace);
-        if (stackValidationRequest.getClusterDefinitionName() == null) {
-            throw new BadRequestException("Cluster definition is not configured for the validation request!");
-        }
-        if (stackValidationRequest.getClusterDefinitionName() != null) {
-            selectClusterDefinition(allAvailableInWorkspace, stackValidation, cd -> cd.getName().equals(stackValidationRequest.getClusterDefinitionName()));
+    private void validateNetwork(Long networkId, NetworkV4Request networkRequest, StackValidation stackValidation) {
+        SpecialParameters specialParameters =
+                cloudParameterCache.getPlatformParameters().get(Platform.platform(stackValidation.getCredential().cloudPlatform())).specialParameters();
+        if (networkId != null) {
+            Network network = networkService.get(networkId);
+            stackValidation.setNetwork(network);
+        } else {
+            EnvironmentView environment = stackValidation.getEnvironment();
+            if (environment != null && environment.getNetwork() != null) {
+                CloudPlatform cloudPlatform = CloudPlatform.valueOf(environment.getCloudPlatform());
+                EnvironmentNetworkConverter environmentNetworkConverter = environmentNetworkConverterMap.get(cloudPlatform);
+                if (environmentNetworkConverter != null) {
+                    Network network = environmentNetworkConverter.convertToLegacyNetwork(environment.getNetwork());
+                    stackValidation.setNetwork(network);
+                }
+            } else if (networkRequest != null) {
+                Network network = converterUtil.convert(networkRequest, Network.class);
+                stackValidation.setNetwork(network);
+            } else if (specialParameters.getSpecialParameters().get(PlatformParametersConsts.NETWORK_IS_MANDATORY)) {
+                throw new BadRequestException("Network is not configured for the validation request!");
+            }
         }
     }
 
@@ -158,9 +174,9 @@ public class StackValidationV4RequestToStackValidationConverter extends Abstract
         return hostGroups;
     }
 
-    private void selectClusterDefinition(Set<ClusterDefinition> clusterDefinitions, StackValidation stackValidation, Predicate<ClusterDefinition> predicate) {
-        clusterDefinitions.stream()
+    private void selectBlueprint(Set<Blueprint> blueprints, StackValidation stackValidation, Predicate<Blueprint> predicate) {
+        blueprints.stream()
                 .filter(predicate)
-                .findFirst().ifPresent(stackValidation::setClusterDefinition);
+                .findFirst().ifPresent(stackValidation::setBlueprint);
     }
 }

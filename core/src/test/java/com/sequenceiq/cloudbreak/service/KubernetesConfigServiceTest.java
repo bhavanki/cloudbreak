@@ -7,6 +7,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.Optional;
 import java.util.Set;
 
 import org.junit.Assert;
@@ -24,7 +25,6 @@ import com.sequenceiq.cloudbreak.domain.KubernetesConfig;
 import com.sequenceiq.cloudbreak.domain.view.EnvironmentView;
 import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
 import com.sequenceiq.cloudbreak.repository.KubernetesConfigRepository;
-import com.sequenceiq.cloudbreak.service.TransactionService.TransactionExecutionException;
 import com.sequenceiq.cloudbreak.service.secret.SecretService;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -43,7 +43,7 @@ public class KubernetesConfigServiceTest {
     private SecretService secretService;
 
     @Before
-    public void setup() throws TransactionExecutionException {
+    public void setup() {
         doAnswer(invocation -> invocation.getArgument(0)).when(kubernetesConfigRepository).save(any());
     }
 
@@ -60,7 +60,7 @@ public class KubernetesConfigServiceTest {
         originalConfig.setId(1L);
         originalConfig.setWorkspace(new Workspace());
         originalConfig.setEnvironments(Set.of(new EnvironmentView()));
-        when(kubernetesConfigRepository.findByNameAndWorkspaceId(any(), anyLong())).thenReturn(originalConfig);
+        when(kubernetesConfigRepository.findByNameAndWorkspaceId(any(), anyLong())).thenReturn(Optional.of(originalConfig));
 
         KubernetesConfig result = underTest.updateByWorkspaceId(1L, new KubernetesConfig());
 

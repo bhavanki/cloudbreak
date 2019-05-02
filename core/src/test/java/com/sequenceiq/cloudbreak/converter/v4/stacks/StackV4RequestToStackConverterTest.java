@@ -1,5 +1,9 @@
 package com.sequenceiq.cloudbreak.converter.v4.stacks;
 
+import static com.sequenceiq.cloudbreak.common.type.DefaultApplicationTag.CB_CREATION_TIMESTAMP;
+import static com.sequenceiq.cloudbreak.common.type.DefaultApplicationTag.CB_USER_NAME;
+import static com.sequenceiq.cloudbreak.common.type.DefaultApplicationTag.CB_VERSION;
+import static com.sequenceiq.cloudbreak.common.type.DefaultApplicationTag.OWNER;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
@@ -9,6 +13,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -35,24 +40,32 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.StackV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.authentication.StackAuthenticationV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ClusterV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.instancegroup.InstanceGroupV4Request;
+import com.sequenceiq.cloudbreak.cloud.model.StackTags;
 import com.sequenceiq.cloudbreak.common.model.user.CloudbreakUser;
 import com.sequenceiq.cloudbreak.common.service.DefaultCostTaggingService;
 import com.sequenceiq.cloudbreak.controller.exception.BadRequestException;
 import com.sequenceiq.cloudbreak.converter.AbstractJsonConverterTest;
+import com.sequenceiq.cloudbreak.converter.v4.environment.network.AwsEnvironmentNetworkConverter;
+import com.sequenceiq.cloudbreak.converter.v4.environment.network.EnvironmentNetworkConverter;
 import com.sequenceiq.cloudbreak.domain.Credential;
+import com.sequenceiq.cloudbreak.domain.Network;
 import com.sequenceiq.cloudbreak.domain.StackAuthentication;
+import com.sequenceiq.cloudbreak.domain.environment.AwsNetwork;
+import com.sequenceiq.cloudbreak.domain.environment.BaseNetwork;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.DatalakeResources;
 import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceGroup;
+import com.sequenceiq.cloudbreak.domain.view.EnvironmentView;
 import com.sequenceiq.cloudbreak.domain.workspace.User;
 import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
 import com.sequenceiq.cloudbreak.service.AuthenticatedUserService;
-import com.sequenceiq.cloudbreak.service.CloudbreakException;
+import com.sequenceiq.cloudbreak.service.Clock;
 import com.sequenceiq.cloudbreak.service.CloudbreakRestRequestThreadLocalService;
 import com.sequenceiq.cloudbreak.service.account.PreferencesService;
 import com.sequenceiq.cloudbreak.service.credential.CredentialService;
 import com.sequenceiq.cloudbreak.service.datalake.DatalakeResourcesService;
+import com.sequenceiq.cloudbreak.service.environment.EnvironmentViewService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
 import com.sequenceiq.cloudbreak.service.user.UserService;
 import com.sequenceiq.cloudbreak.service.workspace.WorkspaceService;
@@ -107,6 +120,18 @@ public class StackV4RequestToStackConverterTest extends AbstractJsonConverterTes
     @Mock
     private DatalakeResourcesService datalakeResourcesService;
 
+    @Mock
+    private Clock clock;
+
+    @Mock
+    private EnvironmentViewService environmentViewService;
+
+    @Mock
+    private Map<CloudPlatform, EnvironmentNetworkConverter> environmentNetworkConverterMap;
+
+    @Mock
+    private AwsEnvironmentNetworkConverter awsEnvironmentNetworkConverter;
+
     private Credential credential;
 
     @Before
@@ -123,7 +148,7 @@ public class StackV4RequestToStackConverterTest extends AbstractJsonConverterTes
     }
 
     @Test
-    public void testConvert() throws CloudbreakException {
+    public void testConvert() {
         initMocks();
         ReflectionTestUtils.setField(underTest, "defaultRegions", "AWS:eu-west-2");
         StackV4Request request = getRequest("stack.json");
@@ -138,12 +163,38 @@ public class StackV4RequestToStackConverterTest extends AbstractJsonConverterTes
         assertAllFieldsNotNull(
                 stack,
                 Arrays.asList("description", "cluster", "credential", "gatewayPort", "network", "securityConfig",
-                        "version", "created", "platformVariant", "cloudPlatform", "flexSubscription",
+                        "version", "created", "platformVariant", "cloudPlatform",
                         "customHostname", "customDomain", "clusterNameAsSubdomain", "hostgroupNameAsHostname", "parameters", "creator",
                         "environment", "terminated", "datalakeResourceId", "type", "inputs", "failurePolicy"));
         assertEquals("eu-west-1", stack.getRegion());
         assertEquals("AWS", stack.getCloudPlatform());
         assertEquals("mystack", stack.getName());
+    }
+
+    @Test
+    public void testConvertShouldHaveDefaultTags() throws IOException {
+        initMocks();
+        ReflectionTestUtils.setField(underTest, "defaultRegions", "AWS:eu-west-2");
+        StackV4Request request = getRequest("stack-without-tags.json");
+
+        Map<String, String> defaultTags = Map.of(CB_USER_NAME.key(), "test", CB_VERSION.key(), "test", OWNER.key(), "test", CB_CREATION_TIMESTAMP.key(), "test");
+        given(defaultCostTaggingService.prepareDefaultTags(any(CloudbreakUser.class), anyMap(), anyString())).willReturn(defaultTags);
+        given(credentialService.getByNameForWorkspace(anyString(), any(Workspace.class))).willReturn(credential);
+        given(providerParameterCalculator.get(request)).willReturn(getMappable());
+        given(conversionService.convert(any(ClusterV4Request.class), eq(Cluster.class))).willReturn(new Cluster());
+        // WHEN
+        Stack stack = underTest.convert(request);
+        // THEN
+        assertAllFieldsNotNull(
+                stack,
+                Arrays.asList("description", "cluster", "credential", "gatewayPort", "network", "securityConfig",
+                        "version", "created", "platformVariant", "cloudPlatform",
+                        "customHostname", "customDomain", "clusterNameAsSubdomain", "hostgroupNameAsHostname", "parameters", "creator",
+                        "environment", "terminated", "datalakeResourceId", "type", "inputs", "failurePolicy"));
+        assertEquals("eu-west-1", stack.getRegion());
+        assertEquals("AWS", stack.getCloudPlatform());
+        assertEquals("mystack", stack.getName());
+        assertEquals(defaultTags, stack.getTags().get(StackTags.class).getDefaultTags());
     }
 
     private Mappable getMappable() {
@@ -161,7 +212,7 @@ public class StackV4RequestToStackConverterTest extends AbstractJsonConverterTes
     }
 
     @Test
-    public void testConvertWithLoginUserName() throws CloudbreakException {
+    public void testConvertWithLoginUserName() {
         initMocks();
         ReflectionTestUtils.setField(underTest, "defaultRegions", "AWS:eu-west-2");
         given(defaultCostTaggingService.prepareDefaultTags(any(CloudbreakUser.class), anyMap(), anyString())).willReturn(new HashMap<>());
@@ -173,7 +224,7 @@ public class StackV4RequestToStackConverterTest extends AbstractJsonConverterTes
         assertAllFieldsNotNull(
                 stack,
                 Arrays.asList("description", "statusReason", "cluster", "credential", "gatewayPort", "template", "network", "securityConfig", "securityGroup",
-                        "version", "created", "platformVariant", "cloudPlatform", "saltPassword", "stackTemplate", "flexSubscription", "datalakeId",
+                        "version", "created", "platformVariant", "cloudPlatform", "saltPassword", "stackTemplate", "datalakeId",
                         "customHostname", "customDomain", "clusterNameAsSubdomain", "hostgroupNameAsHostname", "loginUserName", "rootVolumeSize"));
         assertEquals("eu-west-1", stack.getRegion());
     }
@@ -215,6 +266,40 @@ public class StackV4RequestToStackConverterTest extends AbstractJsonConverterTes
 
         //THEN
         assertEquals(expectedDataLakeId, result.getDatalakeResourceId());
+    }
+
+    @Test
+    public void testConvertWithEnvironmentSpecificNetwork() {
+        initMocks();
+        ReflectionTestUtils.setField(underTest, "defaultRegions", "AWS:eu-west-2");
+        StackV4Request request = getRequest("stack-with-environment-name.json");
+        request.setCloudPlatform(CloudPlatform.AWS);
+
+        given(defaultCostTaggingService.prepareDefaultTags(any(CloudbreakUser.class), anyMap(), anyString())).willReturn(new HashMap<>());
+        given(credentialService.getByNameForWorkspace(anyString(), any(Workspace.class))).willReturn(credential);
+        given(providerParameterCalculator.get(request)).willReturn(getMappable());
+        given(conversionService.convert(any(ClusterV4Request.class), eq(Cluster.class))).willReturn(new Cluster());
+
+        EnvironmentView envMock = mock(EnvironmentView.class);
+        AwsNetwork awsNetwork = mock(AwsNetwork.class);
+        Network mockNetwork = mock(Network.class);
+        given(environmentViewService.getByNameForWorkspace(anyString(), any(Workspace.class))).willReturn(envMock);
+        given(envMock.getNetwork()).willReturn(awsNetwork);
+        given(environmentNetworkConverterMap.get(any(CloudPlatform.class))).willReturn(awsEnvironmentNetworkConverter);
+        given(awsEnvironmentNetworkConverter.convertToLegacyNetwork(any(BaseNetwork.class))).willReturn(mockNetwork);
+        // WHEN
+        Stack stack = underTest.convert(request);
+        // THEN
+        assertAllFieldsNotNull(
+                stack,
+                Arrays.asList("description", "cluster", "credential", "gatewayPort", "securityConfig",
+                        "version", "created", "platformVariant", "cloudPlatform",
+                        "customHostname", "customDomain", "clusterNameAsSubdomain", "hostgroupNameAsHostname", "parameters", "creator",
+                        "terminated", "datalakeResourceId", "type", "inputs", "failurePolicy"));
+        assertEquals("eu-west-1", stack.getRegion());
+        assertEquals("AWS", stack.getCloudPlatform());
+        assertEquals("mystack", stack.getName());
+        assertEquals(mockNetwork, stack.getNetwork());
     }
 
     @Override

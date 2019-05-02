@@ -1,8 +1,8 @@
 package com.sequenceiq.cloudbreak.core.bootstrap.service;
 
 import static com.sequenceiq.cloudbreak.core.bootstrap.service.ClusterDeletionBasedExitCriteriaModel.clusterDeletionBasedModel;
-import static com.sequenceiq.cloudbreak.service.PollingResult.EXIT;
-import static com.sequenceiq.cloudbreak.service.PollingResult.TIMEOUT;
+import static com.sequenceiq.cloudbreak.polling.PollingResult.EXIT;
+import static com.sequenceiq.cloudbreak.polling.PollingResult.TIMEOUT;
 import static java.util.Collections.singletonMap;
 import static org.apache.commons.lang3.StringUtils.isNoneBlank;
 
@@ -24,6 +24,7 @@ import org.springframework.stereotype.Component;
 
 import com.sequenceiq.cloudbreak.cloud.model.Image;
 import com.sequenceiq.cloudbreak.cloud.scheduler.CancellationException;
+import com.sequenceiq.cloudbreak.cluster.service.ClusterComponentConfigProvider;
 import com.sequenceiq.cloudbreak.common.model.OrchestratorType;
 import com.sequenceiq.cloudbreak.common.service.HostDiscoveryService;
 import com.sequenceiq.cloudbreak.common.type.ComponentType;
@@ -45,13 +46,12 @@ import com.sequenceiq.cloudbreak.orchestrator.host.HostOrchestrator;
 import com.sequenceiq.cloudbreak.orchestrator.model.BootstrapParams;
 import com.sequenceiq.cloudbreak.orchestrator.model.GatewayConfig;
 import com.sequenceiq.cloudbreak.orchestrator.model.Node;
-import com.sequenceiq.cloudbreak.repository.OrchestratorRepository;
+import com.sequenceiq.cloudbreak.polling.PollingResult;
+import com.sequenceiq.cloudbreak.polling.PollingService;
 import com.sequenceiq.cloudbreak.service.CloudbreakException;
-import com.sequenceiq.cloudbreak.service.ClusterComponentConfigProvider;
-import com.sequenceiq.cloudbreak.service.ComponentConfigProvider;
+import com.sequenceiq.cloudbreak.service.ComponentConfigProviderService;
 import com.sequenceiq.cloudbreak.service.GatewayConfigService;
-import com.sequenceiq.cloudbreak.service.PollingResult;
-import com.sequenceiq.cloudbreak.service.PollingService;
+import com.sequenceiq.cloudbreak.service.orchestrator.OrchestratorService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -69,7 +69,7 @@ public class ClusterBootstrapper {
     private StackService stackService;
 
     @Inject
-    private OrchestratorRepository orchestratorRepository;
+    private OrchestratorService orchestratorService;
 
     @Inject
     private PollingService<HostBootstrapApiContext> hostBootstrapApiPollingService;
@@ -102,7 +102,7 @@ public class ClusterBootstrapper {
     private ClusterComponentConfigProvider clusterComponentProvider;
 
     @Inject
-    private ComponentConfigProvider componentConfigProvider;
+    private ComponentConfigProviderService componentConfigProviderService;
 
     public void bootstrapMachines(Long stackId) throws CloudbreakException {
         Stack stack = stackService.getByIdWithListsInTransaction(stackId);
@@ -120,7 +120,6 @@ public class ClusterBootstrapper {
     }
 
     @SuppressFBWarnings("REC_CATCH_EXCEPTION")
-    @SuppressWarnings("unchecked")
     public void bootstrapOnHost(Stack stack) throws CloudbreakException {
         Set<Node> nodes = new HashSet<>();
         String domain = hostDiscoveryService.determineDomain(stack.getCustomDomain(), stack.getName(), stack.isClusterNameAsSubdomain());
@@ -155,7 +154,7 @@ public class ClusterBootstrapper {
 
             BootstrapParams params = new BootstrapParams();
             params.setCloud(stack.cloudPlatform());
-            Image image = componentConfigProvider.getImage(stack.getId());
+            Image image = componentConfigProviderService.getImage(stack.getId());
             params.setOs(image.getOs());
 
             hostOrchestrator.bootstrap(allGatewayConfig, nodes, params, clusterDeletionBasedModel(stack.getId(), null));
@@ -171,7 +170,7 @@ public class ClusterBootstrapper {
             Orchestrator orchestrator = stack.getOrchestrator();
             orchestrator.setApiEndpoint(gatewayIp + ':' + stack.getGatewayPort());
             orchestrator.setType(hostOrchestrator.name());
-            orchestratorRepository.save(orchestrator);
+            orchestratorService.save(orchestrator);
             if (TIMEOUT.equals(allNodesAvailabilityPolling)) {
                 clusterBootstrapperErrorHandler.terminateFailedNodes(hostOrchestrator, null, stack, gatewayConfig, nodes);
             }
@@ -255,9 +254,9 @@ public class ClusterBootstrapper {
         }
         BootstrapParams params = new BootstrapParams();
         params.setCloud(stack.cloudPlatform());
-        Image image = null;
+        Image image;
         try {
-            image = componentConfigProvider.getImage(stack.getId());
+            image = componentConfigProviderService.getImage(stack.getId());
             params.setOs(image.getOs());
         } catch (CloudbreakImageNotFoundException e) {
             LOGGER.info("Image not found for stack: {}, err: {}", stack.getId(), e.getMessage());

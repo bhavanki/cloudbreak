@@ -1,6 +1,7 @@
 package com.sequenceiq.cloudbreak.recipe.util;
 
 import static com.sequenceiq.cloudbreak.TestUtil.ldapConfig;
+import static org.mockito.Mockito.mock;
 
 import java.util.Optional;
 
@@ -8,7 +9,8 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.common.ExecutorType;
 import com.sequenceiq.cloudbreak.cloud.model.AmbariDatabase;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.template.model.GeneralClusterConfigs;
-import com.sequenceiq.cloudbreak.template.views.ClusterDefinitionView;
+import com.sequenceiq.cloudbreak.template.processor.BlueprintTextProcessor;
+import com.sequenceiq.cloudbreak.template.views.BlueprintView;
 import com.sequenceiq.cloudbreak.template.views.LdapView;
 
 public class RecipeTestUtil {
@@ -52,8 +54,8 @@ public class RecipeTestUtil {
         return generalClusterConfigs;
     }
 
-    public static ClusterDefinitionView generalClusterDefinitionView(String clusterDefinitionText, String version, String type) {
-        return new ClusterDefinitionView(clusterDefinitionText, version, type);
+    public static BlueprintView generalBlueprintView(String blueprintText, String version, String type) {
+        return new BlueprintView(blueprintText, version, type, mock(BlueprintTextProcessor.class));
     }
 
     public static AmbariDatabase generalAmbariDatabase() {

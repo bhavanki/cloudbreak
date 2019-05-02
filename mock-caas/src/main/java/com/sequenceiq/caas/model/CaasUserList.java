@@ -4,7 +4,6 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.sequenceiq.cloudbreak.client.CaasUser;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class CaasUserList {
@@ -17,7 +16,7 @@ public class CaasUserList {
 
     public CaasUserList(List<CaasUser> users) {
         this.users = users;
-        this.count = users.size();
+        count = users.size();
     }
 
     public int getCount() {

@@ -1,5 +1,7 @@
 package com.sequenceiq.cloudbreak.api.endpoint.v4.proxies;
 
+import java.util.Set;
+
 import javax.validation.Valid;
 import javax.validation.constraints.NotNull;
 import javax.ws.rs.Consumes;
@@ -20,7 +22,6 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.proxies.responses.ProxyV4Respon
 import com.sequenceiq.cloudbreak.doc.ContentType;
 import com.sequenceiq.cloudbreak.doc.ControllerDescription;
 import com.sequenceiq.cloudbreak.doc.Notes;
-import com.sequenceiq.cloudbreak.doc.OperationDescriptions;
 import com.sequenceiq.cloudbreak.doc.OperationDescriptions.ProxyConfigOpDescription;
 
 import io.swagger.annotations.Api;
@@ -35,7 +36,7 @@ public interface ProxyV4Endpoint {
     @Path("")
     @Produces(MediaType.APPLICATION_JSON)
     @ApiOperation(value = ProxyConfigOpDescription.LIST_BY_WORKSPACE, produces = ContentType.JSON, notes = Notes.PROXY_CONFIG_NOTES,
-            nickname = "listProxyconfigsByWorkspace")
+            nickname = "listProxyConfigsByWorkspace")
     ProxyV4Responses list(@PathParam("workspaceId") Long workspaceId, @QueryParam("environment") String environment,
             @QueryParam("attachGlobal") Boolean attachGlobal);
 
@@ -43,22 +44,29 @@ public interface ProxyV4Endpoint {
     @Path("{name}")
     @Produces(MediaType.APPLICATION_JSON)
     @ApiOperation(value = ProxyConfigOpDescription.GET_BY_NAME_IN_WORKSPACE, produces = ContentType.JSON, notes = Notes.PROXY_CONFIG_NOTES,
-            nickname = "getProxyconfigInWorkspace")
+            nickname = "getProxyConfigInWorkspace")
     ProxyV4Response get(@PathParam("workspaceId") Long workspaceId, @PathParam("name") String name);
 
     @POST
     @Path("")
     @Produces(MediaType.APPLICATION_JSON)
     @ApiOperation(value = ProxyConfigOpDescription.CREATE_IN_WORKSPACE, produces = ContentType.JSON, notes = Notes.PROXY_CONFIG_NOTES,
-            nickname = "createProxyconfigInWorkspace")
+            nickname = "createProxyConfigInWorkspace")
     ProxyV4Response post(@PathParam("workspaceId") Long workspaceId, @Valid ProxyV4Request request);
 
     @DELETE
     @Path("{name}")
     @Produces(MediaType.APPLICATION_JSON)
     @ApiOperation(value = ProxyConfigOpDescription.DELETE_BY_NAME_IN_WORKSPACE, produces = ContentType.JSON, notes = Notes.PROXY_CONFIG_NOTES,
-            nickname = "deleteProxyconfigInWorkspace")
+            nickname = "deleteProxyConfigInWorkspace")
     ProxyV4Response delete(@PathParam("workspaceId") Long workspaceId, @PathParam("name") String name);
+
+    @DELETE
+    @Path("")
+    @Produces(MediaType.APPLICATION_JSON)
+    @ApiOperation(value = ProxyConfigOpDescription.DELETE_MULTIPLE_BY_NAME_IN_WORKSPACE, produces = ContentType.JSON, notes = Notes.PROXY_CONFIG_NOTES,
+            nickname = "deleteProxyConfigsInWorkspace")
+    ProxyV4Responses deleteMultiple(@PathParam("workspaceId") Long workspaceId, Set<String> names);
 
     @PUT
     @Path("{name}/attach")
@@ -81,7 +89,7 @@ public interface ProxyV4Endpoint {
     @GET
     @Path("{name}/request")
     @Produces(MediaType.APPLICATION_JSON)
-    @ApiOperation(value = OperationDescriptions.ProxyConfigOpDescription.GET_REQUEST_BY_NAME,
+    @ApiOperation(value = ProxyConfigOpDescription.GET_REQUEST_BY_NAME,
             produces = ContentType.JSON, notes = Notes.PROXY_CONFIG_NOTES,
             nickname = "getProxyRequestFromNameInWorkspace")
     ProxyV4Request getRequest(@PathParam("workspaceId") Long workspaceId, @PathParam("name") String name);

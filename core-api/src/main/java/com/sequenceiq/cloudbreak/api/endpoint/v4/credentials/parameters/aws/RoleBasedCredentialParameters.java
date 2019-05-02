@@ -5,17 +5,20 @@ import java.util.Map;
 
 import javax.validation.constraints.NotNull;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.credentials.parameters.Mappable;
+import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.common.mappable.CloudPlatform;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.base.parameter.MappableBase;
 
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 
 @ApiModel
 @JsonIgnoreProperties(ignoreUnknown = true)
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class RoleBasedCredentialParameters implements Mappable {
+@JsonInclude(Include.NON_NULL)
+public class RoleBasedCredentialParameters extends MappableBase {
 
     @NotNull
     @ApiModelProperty(required = true, example = "arn:aws:iam::981628461338:role/example-role")
@@ -35,6 +38,19 @@ public class RoleBasedCredentialParameters implements Mappable {
         map.put("selector", AwsSelectorType.ROLE_BASED.getName());
         map.put("roleArn", roleArn);
         return map;
+    }
+
+    @Override
+    @JsonIgnore
+    @ApiModelProperty(hidden = true)
+    public CloudPlatform getCloudPlatform() {
+        return CloudPlatform.AWS;
+    }
+
+    @Override
+    public void parse(Map<String, Object> parameters) {
+        super.parse(parameters);
+        roleArn = getParameterOrNull(parameters, "roleArn");
     }
 
 }

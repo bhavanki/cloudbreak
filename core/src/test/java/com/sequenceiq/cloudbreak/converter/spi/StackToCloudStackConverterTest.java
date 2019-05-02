@@ -50,9 +50,9 @@ import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceGroup;
 import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceMetaData;
-import com.sequenceiq.cloudbreak.repository.SecurityRuleRepository;
-import com.sequenceiq.cloudbreak.service.ComponentConfigProvider;
+import com.sequenceiq.cloudbreak.service.ComponentConfigProviderService;
 import com.sequenceiq.cloudbreak.service.image.ImageService;
+import com.sequenceiq.cloudbreak.service.securityrule.SecurityRuleService;
 import com.sequenceiq.cloudbreak.service.stack.DefaultRootVolumeSizeProvider;
 import com.sequenceiq.cloudbreak.template.filesystem.FileSystemConfigurationsViewProvider;
 
@@ -79,13 +79,13 @@ public class StackToCloudStackConverterTest {
     private StackToCloudStackConverter underTest;
 
     @Mock
-    private SecurityRuleRepository securityRuleRepository;
+    private SecurityRuleService securityRuleService;
 
     @Mock
     private ImageService imageService;
 
     @Mock
-    private ComponentConfigProvider componentConfigProvider;
+    private ComponentConfigProviderService componentConfigProviderService;
 
     @Mock
     private DefaultRootVolumeSizeProvider defaultRootVolumeSizeProvider;
@@ -379,7 +379,7 @@ public class StackToCloudStackConverterTest {
         when(instanceGroup.getTemplate()).thenReturn(template);
         when(instanceGroup.getSecurityGroup()).thenReturn(securityGroup);
         when(stack.getInstanceGroupsAsList()).thenReturn(new ArrayList<>(instanceGroups));
-        when(securityRuleRepository.findAllBySecurityGroupId(securityGroup.getId())).thenReturn(Collections.emptyList());
+        when(securityRuleService.findAllBySecurityGroupId(securityGroup.getId())).thenReturn(Collections.emptyList());
 
         CloudStack result = underTest.convert(stack);
 
@@ -405,7 +405,7 @@ public class StackToCloudStackConverterTest {
         when(instanceGroup.getNotDeletedInstanceMetaDataSet()).thenReturn(Collections.emptySet());
         when(instanceGroup.getSecurityGroup()).thenReturn(securityGroup);
         when(stack.getInstanceGroupsAsList()).thenReturn(new ArrayList<>(instanceGroups));
-        when(securityRuleRepository.findAllBySecurityGroupId(securityGroup.getId())).thenReturn(securityRules);
+        when(securityRuleService.findAllBySecurityGroupId(securityGroup.getId())).thenReturn(securityRules);
 
         CloudStack result = underTest.convert(stack);
 
@@ -433,7 +433,7 @@ public class StackToCloudStackConverterTest {
         when(instanceGroup.getNotDeletedInstanceMetaDataSet()).thenReturn(Collections.emptySet());
         when(instanceGroup.getSecurityGroup()).thenReturn(securityGroup);
         when(stack.getInstanceGroupsAsList()).thenReturn(new ArrayList<>(instanceGroups));
-        when(securityRuleRepository.findAllBySecurityGroupId(securityGroup.getId())).thenReturn(securityRules);
+        when(securityRuleService.findAllBySecurityGroupId(securityGroup.getId())).thenReturn(securityRules);
 
         CloudStack result = underTest.convert(stack);
 
@@ -463,7 +463,7 @@ public class StackToCloudStackConverterTest {
         when(instanceGroup.getNotDeletedInstanceMetaDataSet()).thenReturn(Collections.emptySet());
         when(instanceGroup.getSecurityGroup()).thenReturn(securityGroup);
         when(stack.getInstanceGroupsAsList()).thenReturn(new ArrayList<>(instanceGroups));
-        when(securityRuleRepository.findAllBySecurityGroupId(securityGroup.getId())).thenReturn(securityRules);
+        when(securityRuleService.findAllBySecurityGroupId(securityGroup.getId())).thenReturn(securityRules);
 
         CloudStack result = underTest.convert(stack);
 
@@ -662,7 +662,7 @@ public class StackToCloudStackConverterTest {
     @Test
     public void testConvertWhenComponentConfigProviderGivesNullStackTemplateThenNullTemplateShouldBeSaved() {
         when(stack.getId()).thenReturn(TEST_STACK_ID);
-        when(componentConfigProvider.getStackTemplate(TEST_STACK_ID)).thenReturn(null);
+        when(componentConfigProviderService.getStackTemplate(TEST_STACK_ID)).thenReturn(null);
 
         CloudStack result = underTest.convert(stack);
 
@@ -675,7 +675,7 @@ public class StackToCloudStackConverterTest {
         String expected = "template";
         when(stackTemplate.getTemplate()).thenReturn(expected);
         when(stack.getId()).thenReturn(TEST_STACK_ID);
-        when(componentConfigProvider.getStackTemplate(TEST_STACK_ID)).thenReturn(stackTemplate);
+        when(componentConfigProviderService.getStackTemplate(TEST_STACK_ID)).thenReturn(stackTemplate);
 
         CloudStack result = underTest.convert(stack);
 
@@ -734,5 +734,22 @@ public class StackToCloudStackConverterTest {
         assertNotNull(instanceTemplate.getParameters());
         assertEquals("value", instanceTemplate.getParameters().get("someAttr"));
         assertEquals("value", instanceTemplate.getParameters().get("otherAttr"));
+    }
+
+    @Test
+    public void testBuildInstanceTemplateWithEncryptionAttributes() throws Exception {
+        Template template = new Template();
+        template.setVolumeCount(0);
+        template.setAttributes(new Json(Map.of("keyEncryptionMethod", "RAW", "type", "CUSTOM")));
+        template.setSecretAttributes(new Json(Map.of("key", "myKey")).getValue());
+
+        InstanceTemplate instanceTemplate = underTest.buildInstanceTemplate(
+                template, "name", 0L, InstanceStatus.CREATE_REQUESTED, "instanceImageId");
+
+        Map<String, Object> parameters = instanceTemplate.getParameters();
+        assertNotNull(parameters);
+        assertEquals("RAW", parameters.get("keyEncryptionMethod"));
+        assertEquals("CUSTOM", parameters.get("type"));
+        assertEquals("myKey", parameters.get("key"));
     }
 }

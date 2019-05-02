@@ -8,13 +8,13 @@ import javax.inject.Inject;
 
 import org.springframework.stereotype.Component;
 
+import com.sequenceiq.cloudbreak.api.endpoint.v4.common.mappable.CloudPlatform;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.credentials.parameters.aws.AwsCredentialV4Parameters;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.credentials.parameters.azure.AzureCredentialV4Parameters;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.credentials.parameters.azure.AzureCredentialV4RequestParameters;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.credentials.parameters.cumulus.CumulusYarnCredentialV4Parameters;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.credentials.parameters.gcp.GcpCredentialV4Parameters;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.credentials.parameters.openstack.OpenstackCredentialV4Parameters;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.credentials.parameters.yarn.YarnCredentialV4Parameters;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.credentials.providers.CloudPlatform;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.credentials.requests.CredentialV4Request;
 import com.sequenceiq.cloudbreak.controller.validation.credential.CredentialValidator;
 import com.sequenceiq.cloudbreak.converter.AbstractConversionServiceAwareConverter;
@@ -45,7 +45,7 @@ public class CredentialToCredentialV4RequestConverter
         } else if (CloudPlatform.CUMULUS_YARN.name().equals(source.cloudPlatform())) {
             credentialRequest.setCumulus(exec(() -> new Json(parameters).get(CumulusYarnCredentialV4Parameters.class), CumulusYarnCredentialV4Parameters.class));
         } else if (CloudPlatform.AZURE.name().equals(source.cloudPlatform())) {
-            credentialRequest.setAzure(exec(() -> new Json(parameters).get(AzureCredentialV4Parameters.class), AzureCredentialV4Parameters.class));
+            credentialRequest.setAzure(exec(() -> new Json(parameters).get(AzureCredentialV4RequestParameters.class), AzureCredentialV4RequestParameters.class));
         } else if (CloudPlatform.OPENSTACK.name().equals(source.cloudPlatform())) {
             credentialRequest.setOpenstack(getConversionService().convert(parameters, OpenstackCredentialV4Parameters.class));
         }

@@ -8,8 +8,8 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.common.responses.GeneralCollect
 import io.swagger.annotations.ApiModel;
 
 @ApiModel
-public class RecipeV4Responses extends GeneralCollectionV4Response<RecipeViewV4Response> {
-    public RecipeV4Responses(Set<RecipeViewV4Response> responses) {
+public class RecipeV4Responses extends GeneralCollectionV4Response<RecipeV4Response> {
+    public RecipeV4Responses(Set<RecipeV4Response> responses) {
         super(responses);
     }
 

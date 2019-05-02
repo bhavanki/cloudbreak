@@ -71,7 +71,7 @@ public class AmbariMock extends AbstractModelMock {
 
     public static final String BLUEPRINTS = AMBARI_API_ROOT + "/blueprints/*";
 
-    public static final String BLUEPRINTS_BLUEPRINTNAME = AMBARI_API_ROOT + "/blueprints/:blueprintname";
+    public static final String BLUEPRINTS_BLUEPRINT_NAME = AMBARI_API_ROOT + "/blueprints/:blueprintname";
 
     public static final String SERVICES_AMBARI_COMPONENTS_AMBARI_SERVER = AMBARI_API_ROOT + "/services/AMBARI/components/AMBARI_SERVER";
 
@@ -104,7 +104,7 @@ public class AmbariMock extends AbstractModelMock {
         postAmbariClusterRequest();
         getAmbariCheck();
         postAmbariUsers();
-        getAmbariBlueprint();
+        getAmbariBlueprints();
         getAmbariClusterHosts("STARTED");
         getAmbariHosts();
         postAmbariInstances();
@@ -267,8 +267,8 @@ public class AmbariMock extends AbstractModelMock {
         dynamicRouteStack.post(BLUEPRINTS, new EmptyAmbariResponse());
     }
 
-    private void getAmbariBlueprint() {
-        dynamicRouteStack.get(BLUEPRINTS_BLUEPRINTNAME, (request, response) -> {
+    private void getAmbariBlueprints() {
+        dynamicRouteStack.get(BLUEPRINTS_BLUEPRINT_NAME, (request, response) -> {
             response.type("text/plain");
             return responseFromJsonFile("blueprint/" + request.params("blueprintname") + ".bp");
         });

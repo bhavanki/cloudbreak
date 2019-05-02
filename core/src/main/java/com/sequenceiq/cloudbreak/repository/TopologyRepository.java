@@ -3,6 +3,7 @@ package com.sequenceiq.cloudbreak.repository;
 import java.util.Optional;
 
 import javax.transaction.Transactional;
+import javax.transaction.Transactional.TxType;
 
 import com.sequenceiq.cloudbreak.aspect.DisableHasPermission;
 import com.sequenceiq.cloudbreak.aspect.workspace.DisableCheckPermissions;
@@ -15,8 +16,8 @@ import com.sequenceiq.cloudbreak.service.EntityType;
 
 @DisableHasPermission
 @EntityType(entityClass = Network.class)
-@Transactional(Transactional.TxType.REQUIRED)
-@WorkspaceResourceType(resource = WorkspaceResource.TOPOLOGY)
+@Transactional(TxType.REQUIRED)
+@WorkspaceResourceType(resource = WorkspaceResource.STACK)
 public interface TopologyRepository extends WorkspaceResourceRepository<Topology, Long> {
 
     @Override
@@ -30,4 +31,5 @@ public interface TopologyRepository extends WorkspaceResourceRepository<Topology
     @Override
     @DisableCheckPermissions
     Optional<Topology> findById(Long id);
+
 }

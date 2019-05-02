@@ -47,8 +47,8 @@ public class LogContextAspects {
 
     @Before("com.sequenceiq.cloudbreak.logger.LogContextAspects.interceptCloudPlatformEventHandlersAcceptMethod()")
     public void buildLogContextForCloudPlatformEventHandler(JoinPoint joinPoint) {
-        Event<CloudPlatformRequest> event = (Event<CloudPlatformRequest>) joinPoint.getArgs()[0];
-        CloudPlatformRequest cloudPlatformRequest = event.getData();
+        Event<CloudPlatformRequest<?>> event = (Event<CloudPlatformRequest<?>>) joinPoint.getArgs()[0];
+        CloudPlatformRequest<?> cloudPlatformRequest = event.getData();
         CloudContext cloudContext = cloudPlatformRequest.getCloudContext();
         buildMdcContext(cloudContext, event);
         LOGGER.debug("A CloudPlatformEventHandler's 'accept' method has been intercepted: {}, MDC logger context is built.", joinPoint.toShortString());
@@ -63,8 +63,8 @@ public class LogContextAspects {
         Map<String, String> mdcContextMap = event.getHeaders().get(MDCBuilder.MDC_CONTEXT_ID);
         if (mdcContextMap != null) {
             MDCBuilder.buildMdcContextFromMap(mdcContextMap);
-            String trackingId = mdcContextMap.get(LoggerContextKey.TRACKING_ID.toString());
-            MDCBuilder.addTrackingIdToMdcContext(trackingId);
+            String requestId = mdcContextMap.get(LoggerContextKey.REQUEST_ID.toString());
+            MDCBuilder.addRequestIdToMdcContext(requestId);
         }
         LOGGER.debug("A Reactor event handler's 'accept' method has been intercepted: {}, MDC logger context is built.", joinPoint.toShortString());
     }
@@ -82,8 +82,8 @@ public class LogContextAspects {
         if (cloudContext != null) {
             String flowId = eventMdcContext != null ? eventMdcContext.get(LoggerContextKey.FLOW_ID.toString()) : null;
             MDCBuilder.addFlowIdToMdcContext(flowId);
-            String trackingId = eventMdcContext != null ? eventMdcContext.get(LoggerContextKey.TRACKING_ID.toString()) : null;
-            MDCBuilder.addTrackingIdToMdcContext(trackingId);
+            String requestId = eventMdcContext != null ? eventMdcContext.get(LoggerContextKey.REQUEST_ID.toString()) : null;
+            MDCBuilder.addRequestIdToMdcContext(requestId);
             MDCBuilder.buildMdcContext(stringValue(cloudContext.getId()), stringValue(cloudContext.getName()), "STACK");
         } else {
             MDCBuilder.buildMdcContextFromMap(eventMdcContext);

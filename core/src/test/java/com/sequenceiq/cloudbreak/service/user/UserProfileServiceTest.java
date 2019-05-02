@@ -2,12 +2,14 @@ package com.sequenceiq.cloudbreak.service.user;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import java.util.Optional;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -83,7 +85,7 @@ public class UserProfileServiceTest {
         foundProfile.setUser(user);
         foundProfile.setUserName(USERNAME);
 
-        when(userProfileRepository.findOneByUser(anyLong())).thenReturn(foundProfile);
+        when(userProfileRepository.findOneByUser(anyLong())).thenReturn(Optional.of(foundProfile));
         when(userProfileRepository.save(any(UserProfile.class))).thenReturn(new UserProfile());
 
         UserProfile returnedUserProfile = userProfileService.getOrCreate(user);
@@ -117,6 +119,12 @@ public class UserProfileServiceTest {
 
         userProfileService.put(userProfileV4Request, user, workspace);
         assertEquals(2, userProfile.getDefaultCredentials().size());
+    }
+
+    public void testGetShowTerminatedClustersPreferences() {
+        User user = new User();
+        when(userService.getOrCreate(any())).thenReturn(user);
+
     }
 
     private UserProfileV4Request createUserProfileRequest(String credentialName, Long credentialId) {

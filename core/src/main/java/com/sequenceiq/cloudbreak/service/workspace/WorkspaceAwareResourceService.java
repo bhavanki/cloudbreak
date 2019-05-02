@@ -3,9 +3,9 @@ package com.sequenceiq.cloudbreak.service.workspace;
 import java.util.Set;
 
 import com.sequenceiq.cloudbreak.authorization.WorkspaceResource;
+import com.sequenceiq.cloudbreak.domain.workspace.User;
 import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
 import com.sequenceiq.cloudbreak.domain.workspace.WorkspaceAwareResource;
-import com.sequenceiq.cloudbreak.domain.workspace.User;
 
 public interface WorkspaceAwareResourceService<T extends WorkspaceAwareResource> {
 
@@ -17,6 +17,8 @@ public interface WorkspaceAwareResourceService<T extends WorkspaceAwareResource>
 
     T getByNameForWorkspaceId(String name, Long workspaceId);
 
+    Set<T> getByNamesForWorkspaceId(Set<String> name, Long workspaceId);
+
     T getByNameForWorkspace(String name, Workspace workspace);
 
     Set<T> findAllByWorkspace(Workspace workspace);
@@ -25,7 +27,11 @@ public interface WorkspaceAwareResourceService<T extends WorkspaceAwareResource>
 
     T delete(T resource);
 
+    Set<T> delete(Set<T> resources);
+
     T deleteByNameFromWorkspace(String name, Long workspaceId);
+
+    Set<T> deleteMultipleByNameFromWorkspace(Set<String> names, Long workspaceId);
 
     WorkspaceResource resource();
 

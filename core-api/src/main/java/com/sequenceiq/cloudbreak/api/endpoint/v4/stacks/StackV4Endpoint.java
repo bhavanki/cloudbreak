@@ -11,7 +11,7 @@ import static com.sequenceiq.cloudbreak.doc.OperationDescriptions.StackOpDescrip
 import static com.sequenceiq.cloudbreak.doc.OperationDescriptions.StackOpDescription.GET_STACK_REQUEST_IN_WORKSPACE;
 import static com.sequenceiq.cloudbreak.doc.OperationDescriptions.StackOpDescription.GET_STATUS_BY_NAME;
 import static com.sequenceiq.cloudbreak.doc.OperationDescriptions.StackOpDescription.LIST_BY_WORKSPACE;
-import static com.sequenceiq.cloudbreak.doc.OperationDescriptions.StackOpDescription.POST_STACK_FOR_CLUSTER_DEFINITION_IN_WORKSPACE;
+import static com.sequenceiq.cloudbreak.doc.OperationDescriptions.StackOpDescription.POST_STACK_FOR_BLUEPRINT_IN_WORKSPACE;
 import static com.sequenceiq.cloudbreak.doc.OperationDescriptions.StackOpDescription.PUT_BY_NAME;
 import static com.sequenceiq.cloudbreak.doc.OperationDescriptions.StackOpDescription.REPAIR_CLUSTER_IN_WORKSPACE;
 import static com.sequenceiq.cloudbreak.doc.OperationDescriptions.StackOpDescription.RETRY_BY_NAME_IN_WORKSPACE;
@@ -38,13 +38,12 @@ import javax.ws.rs.core.MediaType;
 
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.ClusterRepairV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.MaintenanceModeV4Request;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.ReinstallV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.StackImageChangeV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.StackScaleV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.StackV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.UpdateClusterV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.UserNamePasswordV4Request;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.GeneratedClusterDefinitionV4Response;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.GeneratedBlueprintV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.StackStatusV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.StackV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.StackViewV4Responses;
@@ -122,11 +121,11 @@ public interface StackV4Endpoint {
     void repairCluster(@PathParam("workspaceId") Long workspaceId, @PathParam("name") String name, @Valid ClusterRepairV4Request clusterRepairRequest);
 
     @POST
-    @Path("{name}/cluster_definition")
+    @Path("{name}/blueprint")
     @Produces(MediaType.APPLICATION_JSON)
-    @ApiOperation(value = POST_STACK_FOR_CLUSTER_DEFINITION_IN_WORKSPACE, produces = ContentType.JSON,
-            notes = Notes.STACK_NOTES, nickname = "postStackForClusterDefinitionV4")
-    GeneratedClusterDefinitionV4Response postStackForClusterDefinition(@PathParam("workspaceId") Long workspaceId, @PathParam("name") String name,
+    @ApiOperation(value = POST_STACK_FOR_BLUEPRINT_IN_WORKSPACE, produces = ContentType.JSON,
+            notes = Notes.STACK_NOTES, nickname = "postStackForBlueprintV4")
+    GeneratedBlueprintV4Response postStackForBlueprint(@PathParam("workspaceId") Long workspaceId, @PathParam("name") String name,
             @Valid StackV4Request stackRequest);
 
     @PUT
@@ -167,13 +166,6 @@ public interface StackV4Endpoint {
             @QueryParam("forced") @DefaultValue("false") Boolean forced, @QueryParam("instanceId") String instanceId);
 
     @PUT
-    @Path("{name}/reinstall")
-    @Produces(MediaType.APPLICATION_JSON)
-    @ApiOperation(value = PUT_BY_NAME, produces = ContentType.JSON, notes = Notes.STACK_NOTES,
-            nickname = "putReinstallStackV4")
-    void putReinstall(@PathParam("workspaceId") Long workspaceId, @PathParam("name") String name, @Valid ReinstallV4Request reinstallRequestV2);
-
-    @PUT
     @Path("{name}/ambari_password")
     @Produces(MediaType.APPLICATION_JSON)
     @ApiOperation(value = PUT_BY_NAME, produces = ContentType.JSON, notes = Notes.STACK_NOTES,
@@ -193,4 +185,5 @@ public interface StackV4Endpoint {
     @Produces(MediaType.APPLICATION_JSON)
     @ApiOperation(value = PUT_BY_STACK_ID, produces = ContentType.JSON, notes = Notes.CLUSTER_NOTES, nickname = "putClusterV4")
     void putCluster(@PathParam("workspaceId") Long workspaceId, @PathParam("name") String name, @Valid UpdateClusterV4Request updateJson);
+
 }

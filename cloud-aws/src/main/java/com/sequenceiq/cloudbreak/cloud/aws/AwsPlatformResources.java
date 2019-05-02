@@ -32,6 +32,7 @@ import org.springframework.stereotype.Service;
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.regions.RegionUtils;
 import com.amazonaws.services.ec2.AmazonEC2Client;
+import com.amazonaws.services.ec2.model.AmazonEC2Exception;
 import com.amazonaws.services.ec2.model.DescribeAvailabilityZonesRequest;
 import com.amazonaws.services.ec2.model.DescribeAvailabilityZonesResult;
 import com.amazonaws.services.ec2.model.DescribeInternetGatewaysRequest;
@@ -48,6 +49,7 @@ import com.amazonaws.services.ec2.model.InternetGatewayAttachment;
 import com.amazonaws.services.ec2.model.KeyPairInfo;
 import com.amazonaws.services.ec2.model.SecurityGroup;
 import com.amazonaws.services.ec2.model.Subnet;
+import com.amazonaws.services.ec2.model.Tag;
 import com.amazonaws.services.ec2.model.Vpc;
 import com.amazonaws.services.identitymanagement.AmazonIdentityManagement;
 import com.amazonaws.services.identitymanagement.model.InstanceProfile;
@@ -268,13 +270,30 @@ public class AwsPlatformResources implements PlatformResources {
             properties.put("dhcpOptionsId", vpc.getDhcpOptionsId());
             properties.put("instanceTenancy", vpc.getInstanceTenancy());
             properties.put("state", vpc.getState());
+
             for (Subnet subnet : subnets) {
-                subnetMap.put(subnet.getSubnetId(), subnet.getSubnetId());
+                Optional<String> subnetName = getName(subnet.getTags());
+                subnetMap.put(subnet.getSubnetId(), subnetName.isPresent() ? subnetName.get() : subnet.getSubnetId());
             }
-            cloudNetworks.add(new CloudNetwork(vpc.getVpcId(), vpc.getVpcId(), subnetMap, properties));
+
+            Optional<String> name = getName(vpc.getTags());
+            if (name.isPresent()) {
+                cloudNetworks.add(new CloudNetwork(name.get(), vpc.getVpcId(), subnetMap, properties));
+            } else {
+                cloudNetworks.add(new CloudNetwork(vpc.getVpcId(), vpc.getVpcId(), subnetMap, properties));
+            }
         }
         result.put(region.value(), cloudNetworks);
         return new CloudNetworks(result);
+    }
+
+    private Optional<String> getName(List<Tag> tags) {
+        for (Tag tag : tags) {
+            if (tag.getKey().equals("Name")) {
+                return Optional.ofNullable(tag.getValue());
+            }
+        }
+        return Optional.empty();
     }
 
     private DescribeSubnetsRequest createVpcDescribeRequest(Vpc vpc) {
@@ -369,13 +388,19 @@ public class AwsPlatformResources implements PlatformResources {
 
                 describeAvailabilityZonesRequest.withFilters(filter);
 
-                DescribeAvailabilityZonesResult describeAvailabilityZonesResult = ec2Client.describeAvailabilityZones(describeAvailabilityZonesRequest);
+                try {
+                    DescribeAvailabilityZonesResult describeAvailabilityZonesResult = ec2Client.describeAvailabilityZones(describeAvailabilityZonesRequest);
 
-                List<AvailabilityZone> tmpAz = new ArrayList<>();
-                for (com.amazonaws.services.ec2.model.AvailabilityZone availabilityZone : describeAvailabilityZonesResult.getAvailabilityZones()) {
-                    tmpAz.add(availabilityZone(availabilityZone.getZoneName()));
+                    List<AvailabilityZone> tmpAz = new ArrayList<>();
+                    for (com.amazonaws.services.ec2.model.AvailabilityZone availabilityZone : describeAvailabilityZonesResult.getAvailabilityZones()) {
+                        tmpAz.add(availabilityZone(availabilityZone.getZoneName()));
+                    }
+                    regionListMap.put(region(awsRegion.getRegionName()), tmpAz);
+
+                } catch (AmazonEC2Exception e) {
+                    LOGGER.info("Failed to retrieve AZ from Region: {}!", awsRegion.getRegionName(), e);
                 }
-                regionListMap.put(region(awsRegion.getRegionName()), tmpAz);
+
                 addDisplayName(displayNames, awsRegion);
                 addCoordinate(coordinates, awsRegion);
             }

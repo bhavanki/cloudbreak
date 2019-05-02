@@ -22,17 +22,19 @@ import com.sequenceiq.cloudbreak.domain.Network;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.ClusterTemplate;
+import com.sequenceiq.cloudbreak.domain.stack.cluster.ClusterTemplateView;
 import com.sequenceiq.cloudbreak.domain.workspace.User;
 import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
 import com.sequenceiq.cloudbreak.init.clustertemplate.ClusterTemplateLoaderService;
-import com.sequenceiq.cloudbreak.repository.OrchestratorRepository;
 import com.sequenceiq.cloudbreak.repository.cluster.ClusterTemplateRepository;
+import com.sequenceiq.cloudbreak.repository.cluster.ClusterTemplateViewRepository;
 import com.sequenceiq.cloudbreak.repository.workspace.WorkspaceResourceRepository;
 import com.sequenceiq.cloudbreak.service.AbstractWorkspaceAwareResourceService;
-import com.sequenceiq.cloudbreak.service.ComponentConfigProvider;
+import com.sequenceiq.cloudbreak.service.ComponentConfigProviderService;
 import com.sequenceiq.cloudbreak.service.RestRequestThreadLocalService;
 import com.sequenceiq.cloudbreak.service.cluster.ClusterService;
 import com.sequenceiq.cloudbreak.service.network.NetworkService;
+import com.sequenceiq.cloudbreak.service.orchestrator.OrchestratorService;
 import com.sequenceiq.cloudbreak.service.stack.InstanceGroupService;
 import com.sequenceiq.cloudbreak.service.stack.StackTemplateService;
 import com.sequenceiq.cloudbreak.service.user.UserService;
@@ -45,6 +47,9 @@ public class ClusterTemplateService extends AbstractWorkspaceAwareResourceServic
     private ClusterTemplateRepository clusterTemplateRepository;
 
     @Inject
+    private ClusterTemplateViewRepository clusterTemplateViewRepository;
+
+    @Inject
     private UserService userService;
 
     @Inject
@@ -54,7 +59,7 @@ public class ClusterTemplateService extends AbstractWorkspaceAwareResourceServic
     private ClusterTemplateLoaderService clusterTemplateLoaderService;
 
     @Inject
-    private OrchestratorRepository orchestratorRepository;
+    private OrchestratorService orchestratorService;
 
     @Inject
     private ClusterService clusterService;
@@ -69,7 +74,7 @@ public class ClusterTemplateService extends AbstractWorkspaceAwareResourceServic
     private StackTemplateService stackTemplateService;
 
     @Inject
-    private ComponentConfigProvider componentConfigProvider;
+    private ComponentConfigProviderService componentConfigProviderService;
 
     @Override
     protected WorkspaceResourceRepository<ClusterTemplate, Long> repository() {
@@ -91,7 +96,7 @@ public class ClusterTemplateService extends AbstractWorkspaceAwareResourceServic
         Stack stackTemplate = resource.getStackTemplate();
         stackTemplate.setName(UUID.randomUUID().toString());
         if (stackTemplate.getOrchestrator() != null) {
-            orchestratorRepository.save(stackTemplate.getOrchestrator());
+            orchestratorService.save(stackTemplate.getOrchestrator());
         }
 
         Network network = stackTemplate.getNetwork();
@@ -108,7 +113,7 @@ public class ClusterTemplateService extends AbstractWorkspaceAwareResourceServic
 
         stackTemplate = stackTemplateService.pureSave(stackTemplate);
 
-        componentConfigProvider.store(new ArrayList<>(stackTemplate.getComponents()));
+        componentConfigProviderService.store(new ArrayList<>(stackTemplate.getComponents()));
 
         if (cluster != null) {
             cluster.setStack(stackTemplate);
@@ -130,7 +135,7 @@ public class ClusterTemplateService extends AbstractWorkspaceAwareResourceServic
             throw new BadRequestException("The environment cannot be null.");
         }
 
-        if (clusterTemplateRepository.findByNameAndWorkspace(resource.getName(), resource.getWorkspace()) != null) {
+        if (clusterTemplateRepository.findByNameAndWorkspace(resource.getName(), resource.getWorkspace()).isPresent()) {
             throw new BadRequestException(
                     String.format("clustertemplate already exists with name '%s' in workspace %s", resource.getName(), resource.getWorkspace().getName()));
         }
@@ -146,6 +151,10 @@ public class ClusterTemplateService extends AbstractWorkspaceAwareResourceServic
     public Set<ClusterTemplate> findAllByWorkspaceId(Long workspaceId) {
         updateDefaultClusterTemplates(workspaceId);
         return clusterTemplateRepository.findAllByNotDeletedInWorkspace(workspaceId);
+    }
+
+    public Set<ClusterTemplateView> getAllAvailableViewInWorkspace(Long workspaceId) {
+        return clusterTemplateViewRepository.findAllByNotDeletedInWorkspace(workspaceId);
     }
 
     public void updateDefaultClusterTemplates(long workspaceId) {
@@ -186,5 +195,9 @@ public class ClusterTemplateService extends AbstractWorkspaceAwareResourceServic
         clusterTemplate = delete(clusterTemplate);
         stackTemplateService.delete(clusterTemplate.getStackTemplate());
         return clusterTemplate;
+    }
+
+    public Set<ClusterTemplate> deleteMultiple(Set<String> names, Long workspaceId) {
+        return names.stream().map(name -> delete(name, workspaceId)).collect(Collectors.toSet());
     }
 }

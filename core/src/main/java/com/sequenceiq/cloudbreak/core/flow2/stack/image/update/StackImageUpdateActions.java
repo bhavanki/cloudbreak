@@ -29,23 +29,23 @@ import com.sequenceiq.cloudbreak.core.CloudbreakImageNotFoundException;
 import com.sequenceiq.cloudbreak.core.flow2.CheckResult;
 import com.sequenceiq.cloudbreak.core.flow2.event.StackImageUpdateTriggerEvent;
 import com.sequenceiq.cloudbreak.core.flow2.stack.AbstractStackFailureAction;
-import com.sequenceiq.cloudbreak.core.flow2.stack.FlowMessageService;
-import com.sequenceiq.cloudbreak.core.flow2.stack.Msg;
+import com.sequenceiq.cloudbreak.core.flow2.stack.CloudbreakFlowMessageService;
 import com.sequenceiq.cloudbreak.core.flow2.stack.StackContext;
 import com.sequenceiq.cloudbreak.core.flow2.stack.StackFailureContext;
 import com.sequenceiq.cloudbreak.domain.Resource;
 import com.sequenceiq.cloudbreak.domain.json.Json;
 import com.sequenceiq.cloudbreak.domain.stack.Component;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
+import com.sequenceiq.cloudbreak.message.Msg;
 import com.sequenceiq.cloudbreak.reactor.api.event.StackEvent;
 import com.sequenceiq.cloudbreak.reactor.api.event.StackFailureEvent;
 import com.sequenceiq.cloudbreak.reactor.api.event.stack.ImageUpdateEvent;
 import com.sequenceiq.cloudbreak.service.CloudbreakServiceException;
-import com.sequenceiq.cloudbreak.service.ComponentConfigProvider;
+import com.sequenceiq.cloudbreak.service.ComponentConfigProviderService;
+import com.sequenceiq.cloudbreak.service.OperationException;
 import com.sequenceiq.cloudbreak.service.StackUpdater;
 import com.sequenceiq.cloudbreak.service.image.StatedImage;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
-import com.sequenceiq.cloudbreak.service.stack.connector.OperationException;
 
 @Configuration
 public class StackImageUpdateActions {
@@ -59,7 +59,7 @@ public class StackImageUpdateActions {
             protected void doExecute(StackContext context, StackImageUpdateTriggerEvent payload, Map<Object, Object> variables) {
                 getFlowMessageService().fireEventAndLog(context.getStack().getId(), Msg.STACK_IMAGE_UPDATE_STARTED, Status.UPDATE_IN_PROGRESS.name());
                 if (!getStackImageUpdateService().isCbVersionOk(context.getStack())) {
-                    throw new OperationException("Stack must be created at least with Cloudbreak version [" + StackImageUpdateService.MIN_VERSION + "]");
+                    throw new OperationException("Stack must be created at least with Cloudbreak version [" + StackImageUpdateService.MIN_VERSION + ']');
                 }
                 StatedImage newImage = getStackImageUpdateService().getNewImageIfVersionsMatch(context.getStack(), payload.getNewImageId(),
                         payload.getImageCatalogName(), payload.getImageCatalogUrl());
@@ -126,7 +126,7 @@ public class StackImageUpdateActions {
             @Override
             protected void doExecute(StackContext context, StackEvent payload, Map<Object, Object> variables) {
                 CloudStack cloudStack = getCloudStackConverter().convert(context.getStack());
-                List<Resource> resources = getResourceRepository().findAllByStackId(context.getStack().getId());
+                List<Resource> resources = getResourceService().findAllByStackId(context.getStack().getId());
                 List<CloudResource> cloudResources =
                         resources.stream().map(resource -> getResourceToCloudResourceConverter().convert(resource)).collect(Collectors.toList());
                 UpdateImageRequest<Selectable> request =
@@ -152,13 +152,13 @@ public class StackImageUpdateActions {
     public AbstractStackFailureAction<StackImageUpdateState, StackImageUpdateEvent> handleImageUpdateFailure() {
         return new AbstractStackFailureAction<>() {
             @Inject
-            private FlowMessageService flowMessageService;
+            private CloudbreakFlowMessageService flowMessageService;
 
             @Inject
             private StackUpdater stackUpdater;
 
             @Inject
-            private ComponentConfigProvider componentConfigProvider;
+            private ComponentConfigProviderService componentConfigProviderService;
 
             @Inject
             private StackService stackService;
@@ -172,7 +172,7 @@ public class StackImageUpdateActions {
                     try {
                         Stack stack = stackService.getByIdWithTransaction(context.getStackView().getId());
                         Component component = new Component(ComponentType.IMAGE, ComponentType.IMAGE.name(), new Json(originalImage), stack);
-                        componentConfigProvider.replaceImageComponentWithNew(component);
+                        componentConfigProviderService.replaceImageComponentWithNew(component);
                         LOGGER.debug("Image restored");
                     } catch (JsonProcessingException e) {
                         LOGGER.info("Could not parse JSON. Image restore failed");

@@ -44,24 +44,24 @@ import com.sequenceiq.cloudbreak.core.flow2.FlowRegister;
 import com.sequenceiq.cloudbreak.core.flow2.MessageFactory.HEADERS;
 import com.sequenceiq.cloudbreak.core.flow2.event.StackImageUpdateTriggerEvent;
 import com.sequenceiq.cloudbreak.core.flow2.stack.AbstractStackFailureAction;
-import com.sequenceiq.cloudbreak.core.flow2.stack.FlowMessageService;
-import com.sequenceiq.cloudbreak.core.flow2.stack.Msg;
+import com.sequenceiq.cloudbreak.core.flow2.stack.CloudbreakFlowMessageService;
 import com.sequenceiq.cloudbreak.core.flow2.stack.StackFailureContext;
 import com.sequenceiq.cloudbreak.core.flow2.stack.provision.action.StackCreationService;
 import com.sequenceiq.cloudbreak.domain.Resource;
-import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
-import com.sequenceiq.cloudbreak.domain.workspace.User;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.view.StackView;
+import com.sequenceiq.cloudbreak.domain.workspace.User;
+import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
+import com.sequenceiq.cloudbreak.message.Msg;
 import com.sequenceiq.cloudbreak.reactor.api.event.StackEvent;
 import com.sequenceiq.cloudbreak.reactor.api.event.StackFailureEvent;
 import com.sequenceiq.cloudbreak.reactor.api.event.stack.ImageUpdateEvent;
-import com.sequenceiq.cloudbreak.repository.ResourceRepository;
 import com.sequenceiq.cloudbreak.service.CloudbreakServiceException;
-import com.sequenceiq.cloudbreak.service.ComponentConfigProvider;
+import com.sequenceiq.cloudbreak.service.ComponentConfigProviderService;
 import com.sequenceiq.cloudbreak.service.StackUpdater;
 import com.sequenceiq.cloudbreak.service.image.ImageService;
 import com.sequenceiq.cloudbreak.service.image.StatedImage;
+import com.sequenceiq.cloudbreak.service.resource.ResourceService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
 
 import reactor.bus.Event;
@@ -74,7 +74,7 @@ public class StackImageUpdateActionsTest {
     private static final Long WORKSPACE_ID = 1L;
 
     @Mock
-    private FlowMessageService flowMessageService;
+    private CloudbreakFlowMessageService flowMessageService;
 
     @Mock
     private StackService stackService;
@@ -104,13 +104,13 @@ public class StackImageUpdateActionsTest {
     private ImageService imageService;
 
     @Mock
-    private ResourceRepository resourceRepository;
+    private ResourceService resourceService;
 
     @Mock
     private ResourceToCloudResourceConverter resourceToCloudResourceConverter;
 
     @Mock
-    private ComponentConfigProvider componentConfigProvider;
+    private ComponentConfigProviderService componentConfigProviderService;
 
     @Mock
     private StackUpdater stackUpdater;
@@ -176,6 +176,7 @@ public class StackImageUpdateActionsTest {
 
         User user = new User();
         user.setUserId("horton@hortonworks.com");
+        user.setUserCrn("testCrn");
         user.setUserName("Alma ur");
         Workspace workspace = new Workspace();
         workspace.setId(1L);
@@ -282,7 +283,7 @@ public class StackImageUpdateActionsTest {
         StackEvent payload = new StackEvent(StackImageUpdateEvent.UPDATE_IMAGE_FINESHED_EVENT.event(), 1L);
         when(stateContext.getMessageHeader(HEADERS.DATA.name())).thenReturn(payload);
         when(state.getId()).thenReturn(StackImageUpdateState.SET_IMAGE_STATE);
-        when(resourceRepository.findAllByStackId(anyLong()))
+        when(resourceService.findAllByStackId(anyLong()))
                 .thenReturn(Collections.singletonList(new Resource(ResourceType.CLOUDFORMATION_STACK, "cf", stack)));
         when(resourceToCloudResourceConverter.convert(any(Resource.class)))
                 .thenReturn(CloudResource.builder().type(ResourceType.CLOUDFORMATION_STACK).name("cfresource").build());

@@ -100,7 +100,7 @@ public class DatalakeResources implements ProvisionEntity, WorkspaceAwareResourc
 
     @Override
     public WorkspaceResource getResource() {
-        return WorkspaceResource.DATALAKE_RESOURCES;
+        return WorkspaceResource.STACK;
     }
 
     public Long getDatalakeStackId() {
@@ -132,7 +132,7 @@ public class DatalakeResources implements ProvisionEntity, WorkspaceAwareResourc
     }
 
     public void setDatalakeAmbariFqdn(String datalakeAnbariFqdn) {
-        this.datalakeAmbariFqdn = datalakeAnbariFqdn;
+        datalakeAmbariFqdn = datalakeAnbariFqdn;
     }
 
     public Json getDatalakeComponents() {

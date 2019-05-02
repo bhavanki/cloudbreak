@@ -9,12 +9,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Consumer;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import javax.inject.Inject;
 
-import org.junit.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeansException;
@@ -26,6 +25,7 @@ import org.springframework.util.StringUtils;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.workspace.responses.WorkspaceStatus;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.workspace.responses.WorkspaceV4Response;
+import com.sequenceiq.it.cloudbreak.exception.TestFailException;
 import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
 import com.sequenceiq.it.cloudbreak.newway.CloudbreakTest;
 import com.sequenceiq.it.cloudbreak.newway.TestParameter;
@@ -33,8 +33,8 @@ import com.sequenceiq.it.cloudbreak.newway.action.Action;
 import com.sequenceiq.it.cloudbreak.newway.actor.Actor;
 import com.sequenceiq.it.cloudbreak.newway.actor.CloudbreakUser;
 import com.sequenceiq.it.cloudbreak.newway.assertion.AssertionV2;
-import com.sequenceiq.it.cloudbreak.newway.cloud.v2.provider.CloudProviderProxy;
-import com.sequenceiq.it.cloudbreak.newway.entity.CloudbreakEntity;
+import com.sequenceiq.it.cloudbreak.newway.cloud.v2.CloudProviderProxy;
+import com.sequenceiq.it.cloudbreak.newway.dto.CloudbreakTestDto;
 import com.sequenceiq.it.cloudbreak.newway.finder.Attribute;
 import com.sequenceiq.it.cloudbreak.newway.finder.Capture;
 import com.sequenceiq.it.cloudbreak.newway.finder.Finder;
@@ -46,9 +46,11 @@ public abstract class TestContext implements ApplicationContextAware {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TestContext.class);
 
+    private static final String DESCRIPTION = "DESCRIPTION";
+
     private ApplicationContext applicationContext;
 
-    private final Map<String, CloudbreakEntity> resources = new LinkedHashMap<>();
+    private final Map<String, CloudbreakTestDto> resources = new LinkedHashMap<>();
 
     private final Map<String, CloudbreakClient> clients = new HashMap<>();
 
@@ -61,6 +63,8 @@ public abstract class TestContext implements ApplicationContextAware {
     private final Map<String, Object> selections = new HashMap<>();
 
     private final Map<String, Capture> captures = new HashMap<>();
+
+    private Map<String, Object> contextParameters = new HashMap<>();
 
     @Inject
     private WaitUtilForMultipleStatuses waitUtil;
@@ -76,7 +80,11 @@ public abstract class TestContext implements ApplicationContextAware {
 
     private DefaultModel model;
 
-    public Map<String, CloudbreakEntity> getResources() {
+    private boolean validated;
+
+    private boolean initialized;
+
+    public Map<String, CloudbreakTestDto> getResources() {
         return resources;
     }
 
@@ -101,19 +109,19 @@ public abstract class TestContext implements ApplicationContextAware {
         this.applicationContext = applicationContext;
     }
 
-    public <T extends CloudbreakEntity> T when(Class<T> entityClass, Action<T> action) {
+    public <T extends CloudbreakTestDto> T when(Class<T> entityClass, Action<T> action) {
         return when(entityClass, action, emptyRunningParameter());
     }
 
-    public <T extends CloudbreakEntity> T when(Class<T> entityClass, Action<T> action, RunningParameter runningParameter) {
+    public <T extends CloudbreakTestDto> T when(Class<T> entityClass, Action<T> action, RunningParameter runningParameter) {
         return when(getEntityFromEntityClass(entityClass, runningParameter), action, runningParameter);
     }
 
-    public <T extends CloudbreakEntity> T when(T entity, Action<T> action) {
+    public <T extends CloudbreakTestDto> T when(T entity, Action<T> action) {
         return when(entity, action, emptyRunningParameter());
     }
 
-    public <T extends CloudbreakEntity> T when(T entity, Action<T> action, RunningParameter runningParameter) {
+    public <T extends CloudbreakTestDto> T when(T entity, Action<T> action, RunningParameter runningParameter) {
         checkShutdown();
         String key = runningParameter.getKey();
         if (StringUtils.isEmpty(key)) {
@@ -139,19 +147,19 @@ public abstract class TestContext implements ApplicationContextAware {
         return entity;
     }
 
-    public <T extends CloudbreakEntity> T then(Class<T> entityClass, AssertionV2<T> assertion) {
+    public <T extends CloudbreakTestDto> T then(Class<T> entityClass, AssertionV2<T> assertion) {
         return then(entityClass, assertion, emptyRunningParameter());
     }
 
-    public <T extends CloudbreakEntity> T then(Class<T> entityClass, AssertionV2<T> assertion, RunningParameter runningParameter) {
+    public <T extends CloudbreakTestDto> T then(Class<T> entityClass, AssertionV2<T> assertion, RunningParameter runningParameter) {
         return then(getEntityFromEntityClass(entityClass, runningParameter), assertion, emptyRunningParameter());
     }
 
-    public <T extends CloudbreakEntity> T then(T entity, AssertionV2<T> assertion) {
+    public <T extends CloudbreakTestDto> T then(T entity, AssertionV2<T> assertion) {
         return then(entity, assertion, emptyRunningParameter());
     }
 
-    public <T extends CloudbreakEntity> T then(T entity, AssertionV2<T> assertion, RunningParameter runningParameter) {
+    public <T extends CloudbreakTestDto> T then(T entity, AssertionV2<T> assertion, RunningParameter runningParameter) {
         checkShutdown();
         String key = getKey(assertion.getClass(), runningParameter);
 
@@ -164,9 +172,9 @@ public abstract class TestContext implements ApplicationContextAware {
 
         LOGGER.info("then {} assertion on {}, name: {}", key, entity, entity.getName());
         try {
-            CloudbreakEntity cloudbreakEntity = resources.get(key);
-            if (cloudbreakEntity != null) {
-                return assertion.doAssertion(this, (T) cloudbreakEntity, getCloudbreakClient(who));
+            CloudbreakTestDto cloudbreakTestDto = resources.get(key);
+            if (cloudbreakTestDto != null) {
+                return assertion.doAssertion(this, (T) cloudbreakTestDto, getCloudbreakClient(who));
             } else {
                 assertion.doAssertion(this, entity, getCloudbreakClient(who));
             }
@@ -199,22 +207,40 @@ public abstract class TestContext implements ApplicationContextAware {
         return this;
     }
 
+    public TestContext addDescription(TestCaseDescription testCaseDesription) {
+        this.contextParameters.put(DESCRIPTION, testCaseDesription);
+        return this;
+    }
+
+    public Optional<TestCaseDescription> getDescription() {
+        TestCaseDescription description = (TestCaseDescription) this.contextParameters.get(DESCRIPTION);
+        if (description == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(description);
+    }
+
     protected String getDefaultUser() {
         return testParameter.get(CloudbreakTest.REFRESH_TOKEN);
     }
 
-    public <O extends CloudbreakEntity> O init(Class<O> clss) {
+    public <O extends CloudbreakTestDto> O init(Class<O> clss) {
         checkShutdown();
         Log.log(LOGGER, "init " + clss.getSimpleName());
-        CloudbreakEntity bean = applicationContext.getBean(clss, this);
+        CloudbreakTestDto bean = applicationContext.getBean(clss, this);
+        initialized = true;
         return (O) bean.valid();
     }
 
-    public <O extends CloudbreakEntity> O given(Class<O> clss) {
+    public <O extends CloudbreakTestDto> O given(Class<O> clss) {
         return given(clss.getSimpleName(), clss);
     }
 
-    public <O extends CloudbreakEntity> O given(String key, Class<O> clss) {
+    public <O extends CloudbreakTestDto> O given(String key, Class<O> clss) {
+        Optional<TestCaseDescription> description = getDescription();
+        if (description.isPresent()) {
+            Log.log(LOGGER, "Test case description: " + description.get().getValue());
+        }
         checkShutdown();
         O cloudbreakEntity = (O) resources.get(key);
         if (cloudbreakEntity == null) {
@@ -232,11 +258,11 @@ public abstract class TestContext implements ApplicationContextAware {
         return exceptionMap;
     }
 
-    public <T extends CloudbreakEntity> T get(String key) {
+    public <T extends CloudbreakTestDto> T get(String key) {
         return (T) resources.get(key);
     }
 
-    public <T extends CloudbreakEntity> T get(Class<T> clss) {
+    public <T extends CloudbreakTestDto> T get(Class<T> clss) {
         return get(clss.getSimpleName());
     }
 
@@ -252,11 +278,11 @@ public abstract class TestContext implements ApplicationContextAware {
         return (O) selections.get(key);
     }
 
-    public <O, T extends CloudbreakEntity> T select(Class<T> entityClass, Attribute<T, O> attribute, Finder<O> finder, RunningParameter runningParameter) {
+    public <O, T extends CloudbreakTestDto> T select(Class<T> entityClass, Attribute<T, O> attribute, Finder<O> finder, RunningParameter runningParameter) {
         return select(getEntityFromEntityClass(entityClass, runningParameter), attribute, finder, runningParameter);
     }
 
-    public <O, T extends CloudbreakEntity> T select(T entity, Attribute<T, O> attribute, Finder<O> finder, RunningParameter runningParameter) {
+    public <O, T extends CloudbreakTestDto> T select(T entity, Attribute<T, O> attribute, Finder<O> finder, RunningParameter runningParameter) {
         checkShutdown();
         String key = runningParameter.getKey();
         if (StringUtils.isEmpty(key)) {
@@ -287,7 +313,7 @@ public abstract class TestContext implements ApplicationContextAware {
         return entity;
     }
 
-    public <O, T extends CloudbreakEntity> T capture(T entity, Attribute<T, O> attribute, RunningParameter runningParameter) {
+    public <O, T extends CloudbreakTestDto> T capture(T entity, Attribute<T, O> attribute, RunningParameter runningParameter) {
         checkShutdown();
         String key = runningParameter.getKey();
         if (StringUtils.isEmpty(key)) {
@@ -315,7 +341,7 @@ public abstract class TestContext implements ApplicationContextAware {
         return entity;
     }
 
-    public <O, T extends CloudbreakEntity> T verify(T entity, Attribute<T, O> attribute, RunningParameter runningParameter) {
+    public <O, T extends CloudbreakTestDto> T verify(T entity, Attribute<T, O> attribute, RunningParameter runningParameter) {
         checkShutdown();
         String key = runningParameter.getKey();
         if (StringUtils.isEmpty(key)) {
@@ -360,27 +386,36 @@ public abstract class TestContext implements ApplicationContextAware {
         return getCloudbreakClient(getDefaultUser());
     }
 
-    public <T extends CloudbreakEntity> T await(Class<T> entityClass, Map<String, Status> desiredStatuses) {
-        return await(entityClass, desiredStatuses, emptyRunningParameter());
+    public <T extends CloudbreakTestDto> T await(Class<T> entityClass, Map<String, Status> desiredStatuses) {
+        return await(entityClass, desiredStatuses, emptyRunningParameter(), -1);
     }
 
-    public <T extends CloudbreakEntity> T await(Class<T> entityClass, Map<String, Status> desiredStatuses, RunningParameter runningParameter) {
-        return await(getEntityFromEntityClass(entityClass, runningParameter), desiredStatuses, runningParameter);
+    public <T extends CloudbreakTestDto> T await(Class<T> entityClass, Map<String, Status> desiredStatuses, RunningParameter runningParameter) {
+        return await(getEntityFromEntityClass(entityClass, runningParameter), desiredStatuses, runningParameter, -1);
     }
 
-    public <T extends CloudbreakEntity> T await(T entity, Map<String, Status> desiredStatuses) {
+    public <T extends CloudbreakTestDto> T await(Class<T> entityClass, Map<String, Status> desiredStatuses, RunningParameter runningParameter,
+            long pollingInterval) {
+        return await(getEntityFromEntityClass(entityClass, runningParameter), desiredStatuses, runningParameter, pollingInterval);
+    }
+
+    public <T extends CloudbreakTestDto> T await(T entity, Map<String, Status> desiredStatuses) {
         return await(entity, desiredStatuses, emptyRunningParameter());
     }
 
-    public <T extends CloudbreakEntity> T await(T entity, Map<String, Status> desiredStatuses, RunningParameter runningParameter) {
+    public <T extends CloudbreakTestDto> T await(T entity, Map<String, Status> desiredStatuses, RunningParameter runningParameter) {
+        return await(entity, desiredStatuses, runningParameter, -1);
+    }
+
+    public <T extends CloudbreakTestDto> T await(T entity, Map<String, Status> desiredStatuses, RunningParameter runningParameter, long pollingInterval) {
         checkShutdown();
 
         if (!exceptionMap.isEmpty() && runningParameter.isSkipOnFail()) {
             LOGGER.info("Should be skipped beacause of previous error. await [{}]", desiredStatuses);
             return entity;
         }
-        String key = getKey(entity.getClass(), runningParameter);
-        CloudbreakEntity awaitEntity = get(key);
+        String key = getKeyForAwait(entity, entity.getClass(), runningParameter);
+        CloudbreakTestDto awaitEntity = get(key);
         LOGGER.info("await {} for {}", key, desiredStatuses);
         try {
             if (awaitEntity == null) {
@@ -388,7 +423,7 @@ public abstract class TestContext implements ApplicationContextAware {
             }
 
             CloudbreakClient cloudbreakClient = getCloudbreakClient(getWho(runningParameter));
-            statuses.putAll(waitUtil.waitAndCheckStatuses(cloudbreakClient, awaitEntity.getName(), desiredStatuses));
+            statuses.putAll(waitUtil.waitAndCheckStatuses(cloudbreakClient, awaitEntity.getName(), desiredStatuses, pollingInterval));
             if (!desiredStatuses.values().contains(Status.DELETE_COMPLETED)) {
                 awaitEntity.refresh(this, cloudbreakClient);
             }
@@ -401,37 +436,27 @@ public abstract class TestContext implements ApplicationContextAware {
         return entity;
     }
 
-    public <E extends Exception, T extends CloudbreakEntity> T expect(T entity, Class<E> expectedException, RunningParameter runningParameter) {
+    public <E extends Exception, T extends CloudbreakTestDto> T expect(T entity, Class<E> expectedException, RunningParameter runningParameter) {
         checkShutdown();
         String key = getKey(entity.getClass(), runningParameter);
         Exception exception = exceptionMap.get(key);
         if (exception == null) {
             String message = "Expected an exception but cannot find with key: " + key;
             exceptionMap.put("expect", new RuntimeException(message));
-            Assert.fail(message);
         } else {
             if (!exception.getClass().equals(expectedException)) {
                 String message = String.format("Expected exception (%s) does not match with the actual exception (%s).",
                         expectedException, exception.getClass());
                 exceptionMap.put("expect", new RuntimeException(message));
-                Assert.fail(message);
             } else if (!isMessageEquals(exception, runningParameter)) {
                 String message = String.format("Expected exception message (%s) does not match with the actual exception message (%s).",
                         runningParameter.getExpectedMessage(), getErrorMessage(exception));
                 exceptionMap.put("expect", new RuntimeException(message));
-                Assert.fail(message);
             } else {
-                runExceptionConsumer(runningParameter.getExceptionConsumer(), exception);
                 exceptionMap.remove(key);
             }
         }
         return entity;
-    }
-
-    private void runExceptionConsumer(Consumer<Exception> exceptionConsumer, Exception exception) {
-        if (exceptionConsumer != null) {
-            exceptionConsumer.accept(exception);
-        }
     }
 
     private boolean isMessageEquals(Exception exception, RunningParameter runningParameter) {
@@ -439,21 +464,25 @@ public abstract class TestContext implements ApplicationContextAware {
                 || Pattern.compile(runningParameter.getExpectedMessage()).matcher(getErrorMessage(exception)).find();
     }
 
-    public void handleExecptionsDuringTest() {
+    public void handleExecptionsDuringTest(boolean silently) {
+        validated = true;
         checkShutdown();
         Map<String, Exception> exceptionsDuringTest = getErrors();
         if (!exceptionsDuringTest.isEmpty()) {
-            StringBuilder br = new StringBuilder("All Exceptions during test are logged before this message").append(System.lineSeparator());
+            StringBuilder builder = new StringBuilder("All Exceptions that occurred during the test are logged before this message")
+                    .append(System.lineSeparator());
             exceptionsDuringTest.forEach((msg, ex) -> {
                 LOGGER.error(msg, ex);
-                br.append(msg).append(": ").append(getErrorMessage(ex)).append(System.lineSeparator());
+                builder.append(msg).append(": ").append(getErrorMessage(ex)).append(System.lineSeparator());
             });
             exceptionsDuringTest.clear();
-            Assert.fail(br.toString());
+            if (!silently) {
+                throw new TestFailException(builder.toString());
+            }
         }
     }
 
-    private <T extends CloudbreakEntity> T getEntityFromEntityClass(Class<T> entityClass, RunningParameter runningParameter) {
+    private <T extends CloudbreakTestDto> T getEntityFromEntityClass(Class<T> entityClass, RunningParameter runningParameter) {
         String key = getKey(entityClass, runningParameter);
         T entity = (T) resources.get(key);
         if (entity == null) {
@@ -480,6 +509,16 @@ public abstract class TestContext implements ApplicationContextAware {
         return who;
     }
 
+    private <T> String getKeyForAwait(T entity, Class<? extends T> entityClass, RunningParameter runningParameter) {
+        Optional<Map.Entry<String, CloudbreakTestDto>> foundEntry = resources.entrySet().stream()
+                .filter(entry -> entry.getValue() == entity)
+                .findFirst();
+        if (foundEntry.isPresent()) {
+            return foundEntry.get().getKey();
+        }
+        return getKey(entityClass, runningParameter);
+    }
+
     private <T> String getKey(Class<T> entityClass, RunningParameter runningParameter) {
         String key = runningParameter.getKey();
         if (StringUtils.isEmpty(key)) {
@@ -494,23 +533,26 @@ public abstract class TestContext implements ApplicationContextAware {
         }
     }
 
-    public void cleanupTestContextEntity() {
+    public void cleanupTestContext() {
+        if (!validated && initialized) {
+            throw new IllegalStateException(
+                    "Test context should be validated! Maybe do you forgot to call .validate() end of the test? See other tests as an example.");
+        }
         checkShutdown();
-        handleExecptionsDuringTest();
+        handleExecptionsDuringTest(true);
         if (!cleanUpOnFailure && !getExceptionMap().isEmpty()) {
             LOGGER.info("Cleanup skipped beacuse cleanupOnFail is false");
             return;
         }
-        List<CloudbreakEntity> entities = new ArrayList<>(getResources().values());
-
-        entities.stream().sorted(new CompareByOrder()).forEach(entryset -> {
+        List<CloudbreakTestDto> testDtos = new ArrayList<>(getResources().values());
+        List<CloudbreakTestDto> orderedTestDtos = testDtos.stream().sorted(new CompareByOrder()).collect(Collectors.toList());
+        for (CloudbreakTestDto testDto : orderedTestDtos) {
             try {
-                //TODO this needs better implementation
-                entryset.cleanUp(this, getClients().get(getDefaultUser()));
+                testDto.cleanUp(this, getClients().get(getDefaultUser()));
             } catch (Exception e) {
-                LOGGER.error("Was not able to cleanup resource, possible that it was cleaned up before, {}", getErrorMessage(e), e);
+                LOGGER.error("Was not able to cleanup resource [{}]., {}", testDto.getName(), getErrorMessage(e), e);
             }
-        });
+        }
         shutdown();
     }
 

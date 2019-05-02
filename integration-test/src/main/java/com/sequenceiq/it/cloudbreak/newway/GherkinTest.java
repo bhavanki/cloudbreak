@@ -1,6 +1,5 @@
 package com.sequenceiq.it.cloudbreak.newway;
 
-import com.sequenceiq.it.cloudbreak.newway.entity.AbstractCloudbreakEntity;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,6 +8,7 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
 
 import com.sequenceiq.it.IntegrationTestContext;
+import com.sequenceiq.it.cloudbreak.newway.dto.AbstractCloudbreakTestDto;
 import com.sequenceiq.it.cloudbreak.newway.log.Log;
 import com.sequenceiq.it.cloudbreak.newway.logsearch.LogSearchUtil;
 import com.sequenceiq.it.config.IntegrationTestConfiguration;
@@ -32,8 +32,8 @@ public class GherkinTest extends AbstractTestNGSpringContextTests {
             Log.log("Given " + message);
             entity.create(itContext);
             itContext.putContextParam(entity.getEntityId(), entity);
-            if (entity instanceof AbstractCloudbreakEntity) {
-                String resourceName = ((AbstractCloudbreakEntity) entity).getName();
+            if (entity instanceof AbstractCloudbreakTestDto) {
+                String resourceName = ((AbstractCloudbreakTestDto) entity).getName();
                 if (StringUtils.isNotBlank(resourceName)) {
                     LogSearchUtil.addQueryModelForLogSearchUrlToContext(itContext,
                             LogSearchUtil.LOG_SEARCH_CBNAME_ID, LogSearchUtil.LOG_SEARCH_CBNAME_QUERY_TYPE, resourceName);

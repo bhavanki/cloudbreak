@@ -18,6 +18,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.statemachine.StateContext;
 import org.springframework.statemachine.action.Action;
 
+import com.sequenceiq.cloudbreak.api.util.ConverterUtil;
 import com.sequenceiq.cloudbreak.cloud.context.CloudContext;
 import com.sequenceiq.cloudbreak.cloud.event.Payload;
 import com.sequenceiq.cloudbreak.cloud.event.Selectable;
@@ -28,7 +29,7 @@ import com.sequenceiq.cloudbreak.cloud.model.CloudInstance;
 import com.sequenceiq.cloudbreak.cloud.model.CloudResource;
 import com.sequenceiq.cloudbreak.cloud.model.Location;
 import com.sequenceiq.cloudbreak.converter.spi.CredentialToCloudCredentialConverter;
-import com.sequenceiq.cloudbreak.core.flow2.AbstractAction;
+import com.sequenceiq.cloudbreak.core.flow2.AbstractStackAction;
 import com.sequenceiq.cloudbreak.core.flow2.stack.AbstractStackFailureAction;
 import com.sequenceiq.cloudbreak.core.flow2.stack.StackFailureContext;
 import com.sequenceiq.cloudbreak.core.flow2.stack.start.StackStartStopContext;
@@ -38,10 +39,9 @@ import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceMetaData;
 import com.sequenceiq.cloudbreak.logger.MDCBuilder;
 import com.sequenceiq.cloudbreak.reactor.api.event.StackEvent;
 import com.sequenceiq.cloudbreak.reactor.api.event.StackFailureEvent;
-import com.sequenceiq.cloudbreak.repository.InstanceMetaDataRepository;
 import com.sequenceiq.cloudbreak.service.metrics.MetricType;
+import com.sequenceiq.cloudbreak.service.stack.InstanceMetaDataService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
-import com.sequenceiq.cloudbreak.api.util.ConverterUtil;
 
 @Configuration
 public class StackStopActions {
@@ -55,7 +55,7 @@ public class StackStopActions {
 
     @Bean(name = "STOP_STATE")
     public Action<?, ?> stackStopAction() {
-        return new AbstractStackStopAction<StackEvent>(StackEvent.class) {
+        return new AbstractStackStopAction<>(StackEvent.class) {
             @Override
             protected void doExecute(StackStartStopContext context, StackEvent payload, Map<Object, Object> variables) {
                 stackStartStopService.startStackStop(context);
@@ -74,11 +74,11 @@ public class StackStopActions {
 
     @Bean(name = "STOP_FINISHED_STATE")
     public Action<?, ?> stackStopFinishedAction() {
-        return new AbstractStackStopAction<StopInstancesResult>(StopInstancesResult.class) {
+        return new AbstractStackStopAction<>(StopInstancesResult.class) {
             @Override
             protected void doExecute(StackStartStopContext context, StopInstancesResult payload, Map<Object, Object> variables) {
                 stackStartStopService.finishStackStop(context, payload);
-                metricService.incrementMetricCounter(MetricType.STACK_STOP_SUCCESSFUL, context.getStack());
+                getMetricService().incrementMetricCounter(MetricType.STACK_STOP_SUCCESSFUL, context.getStack());
                 sendEvent(context);
             }
 
@@ -95,7 +95,7 @@ public class StackStopActions {
             @Override
             protected void doExecute(StackFailureContext context, StackFailureEvent payload, Map<Object, Object> variables) {
                 stackStartStopService.handleStackStopError(context.getStackView(), payload);
-                metricService.incrementMetricCounter(MetricType.STACK_STOP_FAILED, context.getStackView());
+                getMetricService().incrementMetricCounter(MetricType.STACK_STOP_FAILED, context.getStackView());
                 sendEvent(context);
             }
 
@@ -106,12 +106,13 @@ public class StackStopActions {
         };
     }
 
-    private abstract static class AbstractStackStopAction<P extends Payload> extends AbstractAction<StackStopState, StackStopEvent, StackStartStopContext, P> {
+    private abstract static class AbstractStackStopAction<P extends Payload>
+            extends AbstractStackAction<StackStopState, StackStopEvent, StackStartStopContext, P> {
         @Inject
         private StackService stackService;
 
         @Inject
-        private InstanceMetaDataRepository instanceMetaDataRepository;
+        private InstanceMetaDataService instanceMetaDataService;
 
         @Inject
         private CredentialToCloudCredentialConverter credentialConverter;
@@ -125,7 +126,7 @@ public class StackStopActions {
             Long stackId = payload.getStackId();
             Stack stack = stackService.getByIdWithListsInTransaction(stackId);
             MDCBuilder.buildMdcContext(stack);
-            List<InstanceMetaData> instances = new ArrayList<>(instanceMetaDataRepository.findNotTerminatedForStack(stackId));
+            List<InstanceMetaData> instances = new ArrayList<>(instanceMetaDataService.findNotTerminatedForStack(stackId));
             Location location = location(region(stack.getRegion()), availabilityZone(stack.getAvailabilityZone()));
             CloudContext cloudContext = new CloudContext(stack.getId(), stack.getName(), stack.cloudPlatform(), stack.getPlatformVariant(),
                     location, stack.getCreator().getUserId(), stack.getWorkspace().getId());

@@ -20,14 +20,17 @@ import javax.validation.constraints.NotNull;
 
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.stereotype.Service;
 
-import com.sequenceiq.ambari.client.AmbariClient;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.common.mappable.CloudPlatform;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.requests.EnvironmentAttachV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.requests.EnvironmentChangeCredentialV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.requests.EnvironmentDetachV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.requests.EnvironmentEditV4Request;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.requests.EnvironmentNetworkV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.requests.EnvironmentV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.requests.LocationV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.requests.RegisterDatalakeV4Request;
@@ -36,6 +39,7 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.responses.SimpleEnv
 import com.sequenceiq.cloudbreak.authorization.WorkspaceResource;
 import com.sequenceiq.cloudbreak.cloud.model.CloudRegions;
 import com.sequenceiq.cloudbreak.cloud.model.Coordinate;
+import com.sequenceiq.cloudbreak.cluster.api.DatalakeConfigApi;
 import com.sequenceiq.cloudbreak.controller.exception.BadRequestException;
 import com.sequenceiq.cloudbreak.controller.validation.ValidationResult;
 import com.sequenceiq.cloudbreak.controller.validation.ValidationResult.ValidationResultBuilder;
@@ -44,6 +48,7 @@ import com.sequenceiq.cloudbreak.controller.validation.environment.EnvironmentAt
 import com.sequenceiq.cloudbreak.controller.validation.environment.EnvironmentCreationValidator;
 import com.sequenceiq.cloudbreak.controller.validation.environment.EnvironmentDetachValidator;
 import com.sequenceiq.cloudbreak.controller.validation.environment.EnvironmentRegionValidator;
+import com.sequenceiq.cloudbreak.converter.v4.environment.network.EnvironmentNetworkConverter;
 import com.sequenceiq.cloudbreak.domain.Credential;
 import com.sequenceiq.cloudbreak.domain.KerberosConfig;
 import com.sequenceiq.cloudbreak.domain.KubernetesConfig;
@@ -51,6 +56,7 @@ import com.sequenceiq.cloudbreak.domain.LdapConfig;
 import com.sequenceiq.cloudbreak.domain.PlatformResourceRequest;
 import com.sequenceiq.cloudbreak.domain.ProxyConfig;
 import com.sequenceiq.cloudbreak.domain.RDSConfig;
+import com.sequenceiq.cloudbreak.domain.environment.BaseNetwork;
 import com.sequenceiq.cloudbreak.domain.environment.Environment;
 import com.sequenceiq.cloudbreak.domain.environment.Region;
 import com.sequenceiq.cloudbreak.domain.json.Json;
@@ -60,27 +66,30 @@ import com.sequenceiq.cloudbreak.domain.view.EnvironmentView;
 import com.sequenceiq.cloudbreak.domain.view.StackApiView;
 import com.sequenceiq.cloudbreak.repository.environment.EnvironmentRepository;
 import com.sequenceiq.cloudbreak.repository.workspace.WorkspaceResourceRepository;
-import com.sequenceiq.cloudbreak.service.AbstractWorkspaceAwareResourceService;
+import com.sequenceiq.cloudbreak.service.AbstractArchivistService;
 import com.sequenceiq.cloudbreak.service.CloudbreakServiceException;
 import com.sequenceiq.cloudbreak.service.KubernetesConfigService;
 import com.sequenceiq.cloudbreak.service.TransactionService;
 import com.sequenceiq.cloudbreak.service.TransactionService.TransactionExecutionException;
 import com.sequenceiq.cloudbreak.service.TransactionService.TransactionRuntimeExecutionException;
-import com.sequenceiq.cloudbreak.service.cluster.ambari.AmbariClientProvider;
+import com.sequenceiq.cloudbreak.service.cluster.ClusterService;
 import com.sequenceiq.cloudbreak.service.credential.CredentialPrerequisiteService;
 import com.sequenceiq.cloudbreak.service.datalake.DatalakeResourcesService;
-import com.sequenceiq.cloudbreak.service.kerberos.KerberosService;
+import com.sequenceiq.cloudbreak.service.kerberos.KerberosConfigService;
 import com.sequenceiq.cloudbreak.service.ldapconfig.LdapConfigService;
 import com.sequenceiq.cloudbreak.service.platform.PlatformParameterService;
 import com.sequenceiq.cloudbreak.service.proxy.ProxyConfigService;
 import com.sequenceiq.cloudbreak.service.rdsconfig.RdsConfigService;
 import com.sequenceiq.cloudbreak.service.sharedservice.AmbariDatalakeConfigProvider;
+import com.sequenceiq.cloudbreak.service.sharedservice.DatalakeConfigApiConnector;
 import com.sequenceiq.cloudbreak.service.sharedservice.ServiceDescriptorDefinitionProvider;
 import com.sequenceiq.cloudbreak.service.stack.StackApiViewService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
 
 @Service
-public class EnvironmentService extends AbstractWorkspaceAwareResourceService<Environment> {
+public class EnvironmentService extends AbstractArchivistService<Environment> {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(EnvironmentService.class);
 
     @Inject
     private RdsConfigService rdsConfigService;
@@ -95,7 +104,7 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
     private ProxyConfigService proxyConfigService;
 
     @Inject
-    private KerberosService kerberosService;
+    private KerberosConfigService kerberosConfigService;
 
     @Inject
     private EnvironmentCredentialOperationService environmentCredentialOperationService;
@@ -114,6 +123,9 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
 
     @Inject
     private StackService stackService;
+
+    @Inject
+    private ClusterService clusterService;
 
     @Inject
     private StackApiViewService stackApiViewService;
@@ -135,16 +147,22 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
     private EnvironmentDetachValidator environmentDetachValidator;
 
     @Inject
-    private AmbariDatalakeConfigProvider ambariDatalakeConfigProvider;
-
-    @Inject
-    private AmbariClientProvider ambariClientProvider;
-
-    @Inject
     private ClusterCreationEnvironmentValidator clusterCreationEnvironmentValidator;
 
     @Inject
     private DatalakeResourcesService datalakeResourcesService;
+
+    @Inject
+    private DatalakeConfigApiConnector datalakeConfigApiConnector;
+
+    @Inject
+    private AmbariDatalakeConfigProvider ambariDatalakeConfigProvider;
+
+    @Inject
+    private EnvironmentNetworkService environmentNetworkService;
+
+    @Inject
+    private Map<CloudPlatform, EnvironmentNetworkConverter> environmentNetworkConverterMap;
 
     public Set<SimpleEnvironmentV4Response> listByWorkspaceId(Long workspaceId) {
         Set<SimpleEnvironmentV4Response> environmentResponses = environmentViewService.findAllByWorkspaceId(workspaceId).stream()
@@ -164,8 +182,11 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
 
     public DetailedEnvironmentV4Response get(String environmentName, Long workspaceId) {
         try {
-            return transactionService.required(() ->
-                    conversionService.convert(getByNameForWorkspaceId(environmentName, workspaceId), DetailedEnvironmentV4Response.class));
+            return transactionService.required(() -> {
+                Environment environment = getByNameForWorkspaceId(environmentName, workspaceId);
+                stackApiViewService.decorate(environment, workspaceId);
+                return conversionService.convert(environment, DetailedEnvironmentV4Response.class);
+            });
         } catch (TransactionExecutionException e) {
             throw new TransactionRuntimeExecutionException(e);
         }
@@ -177,6 +198,7 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
 
     public SimpleEnvironmentV4Response delete(String environmentName, Long workspaceId) {
         Environment environment = getByNameForWorkspaceId(environmentName, workspaceId);
+        LOGGER.debug(String.format("Starting to archive environment [name: %s, workspace: %s]", environment.getName(), environment.getWorkspace().getName()));
         delete(environment);
         return conversionService.convert(environment, SimpleEnvironmentV4Response.class);
     }
@@ -194,6 +216,7 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
             throw new BadRequestException(validationResult.getFormattedErrors());
         }
         environment = createForLoggedInUser(environment, workspaceId);
+        createAndSetNetwork(environment, request.getNetwork());
         return conversionService.convert(environment, DetailedEnvironmentV4Response.class);
     }
 
@@ -203,7 +226,7 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
         environment.setProxyConfigs(proxyConfigService.findByNamesInWorkspace(request.getProxies(), workspaceId));
         environment.setRdsConfigs(rdsConfigService.findByNamesInWorkspace(request.getDatabases(), workspaceId));
         environment.setKubernetesConfigs(kubernetesConfigService.findByNamesInWorkspace(request.getKubernetes(), workspaceId));
-        environment.setKerberosConfigs(kerberosService.findByNamesInWorkspace(request.getKerberoses(), workspaceId));
+        environment.setKerberosConfigs(kerberosConfigService.findByNamesInWorkspace(request.getKerberoses(), workspaceId));
         Credential credential = environmentCredentialOperationService.getCredentialFromRequest(request, workspaceId);
         environment.setCredential(credential);
         environment.setCloudPlatform(credential.cloudPlatform());
@@ -232,8 +255,15 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
             request.setLocation(locationRequest);
             editRegions(request, environment, cloudRegions);
         }
-        environment = pureSave(environment);
-        return conversionService.convert(environment, DetailedEnvironmentV4Response.class);
+
+        try {
+            return transactionService.required(() -> {
+                Environment savedEnvironment = pureSave(environment);
+                return conversionService.convert(savedEnvironment, DetailedEnvironmentV4Response.class);
+            });
+        } catch (TransactionExecutionException e) {
+            throw new TransactionRuntimeExecutionException(e);
+        }
     }
 
     private boolean locationAndRegionChanged(EnvironmentEditV4Request request) {
@@ -318,7 +348,7 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
                 Set<RDSConfig> rdssToAttach = rdsConfigService.findByNamesInWorkspace(request.getDatabases(), workspaceId);
                 Set<KubernetesConfig> kubesToAttach = kubernetesConfigService.findByNamesInWorkspace(request.getKubernetes(), workspaceId);
                 ValidationResult validationResult = environmentAttachValidator.validate(request, ldapsToAttach, proxiesToAttach, rdssToAttach);
-                Set<KerberosConfig> kerberosConfigsToAttach = kerberosService.findByNamesInWorkspace(request.getKerberoses(), workspaceId);
+                Set<KerberosConfig> kerberosConfigsToAttach = kerberosConfigService.findByNamesInWorkspace(request.getKerberoses(), workspaceId);
                 if (validationResult.hasError()) {
                     throw new BadRequestException(validationResult.getFormattedErrors());
                 }
@@ -408,7 +438,7 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
                 .filter(kerberosConfig -> request.getKerberoses().contains(kerberosConfig.getName())).collect(Collectors.toSet());
         Map<KerberosConfig, Set<Cluster>> kerberosConfigsToClusters = kerberosConfigsToDetach.stream()
                 .collect(Collectors.toMap(kerberosConfig -> kerberosConfig, kerberosConfig ->
-                        kerberosService.getClustersUsingResourceInEnvironment(kerberosConfig, environment.getId())));
+                        kerberosConfigService.getClustersUsingResourceInEnvironment(kerberosConfig, environment.getId())));
         validationResult = environmentDetachValidator.validate(environment, kerberosConfigsToClusters).merge(validationResult);
         environment.getKerberosConfigs().removeAll(kerberosConfigsToDetach);
         return validationResult;
@@ -459,16 +489,17 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
                     LdapConfig ldapConfig = isEmpty(registerDatalakeRequest.getLdapName()) ? null
                             : ldapConfigService.getByNameForWorkspaceId(registerDatalakeRequest.getLdapName(), workspaceId);
                     KerberosConfig kerberosConfig = isEmpty(registerDatalakeRequest.getKerberosName()) ? null
-                            : kerberosService.getByNameForWorkspaceId(registerDatalakeRequest.getKerberosName(), workspaceId);
+                            : kerberosConfigService.getByNameForWorkspaceId(registerDatalakeRequest.getKerberosName(), workspaceId);
                     Set<RDSConfig> rdssConfigs = CollectionUtils.isEmpty(registerDatalakeRequest.getDatabaseNames()) ? null
                             : rdsConfigService.findByNamesInWorkspace(registerDatalakeRequest.getDatabaseNames(), workspaceId);
                     URL ambariUrl = new URL(datalakeAmbariUrl);
-                    AmbariClient ambariClient = ambariClientProvider.getAmbariClient(ambariUrl, datalakeAmbariUser, datalakeAmbariPassowrd);
+
                     Map<String, Map<String, String>> serviceSecretParamMap = isEmpty(registerDatalakeRequest.getRangerAdminPassword())
                             ? new HashMap<>() : Map.ofEntries(Map.entry(ServiceDescriptorDefinitionProvider.RANGER_SERVICE, Map.ofEntries(
                             Map.entry(ServiceDescriptorDefinitionProvider.RANGER_ADMIN_PWD_KEY, registerDatalakeRequest.getRangerAdminPassword()))));
+                    DatalakeConfigApi connector = datalakeConfigApiConnector.getConnector(ambariUrl, datalakeAmbariUser, datalakeAmbariPassowrd);
                     DatalakeResources datalakeResources = ambariDatalakeConfigProvider.collectAndStoreDatalakeResources(environmentName, envView,
-                            datalakeAmbariUrl, ambariUrl.getHost(), ambariUrl.getHost(), ambariClient, serviceSecretParamMap, ldapConfig, kerberosConfig,
+                            datalakeAmbariUrl, ambariUrl.getHost(), ambariUrl.getHost(), connector, serviceSecretParamMap, ldapConfig, kerberosConfig,
                             rdssConfigs, environment.getWorkspace());
                     environment.getDatalakeResources().add(datalakeResources);
                     return conversionService.convert(environmentRepository.save(environment), DetailedEnvironmentV4Response.class);
@@ -487,10 +518,11 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
 
     @Override
     protected void prepareDeletion(Environment environment) {
-        Long aliveEnvs = stackService.countAliveByEnvironment(environment);
-        if (aliveEnvs > 0) {
+        Long aliveStacks = stackService.countAliveByEnvironment(environment);
+        Long aliveClusters = clusterService.countAliveByEnvironment(environment);
+        if (aliveStacks > 0 || aliveClusters > 0) {
             throw new BadRequestException("Cannot delete environment. "
-                    + "All clusters must be terminated before environment deletion. Alive clusters: " + aliveEnvs);
+                    + "All clusters must be terminated before environment deletion. Alive clusters: " + aliveStacks);
         }
     }
 
@@ -506,5 +538,25 @@ public class EnvironmentService extends AbstractWorkspaceAwareResourceService<En
     @Override
     public WorkspaceResource resource() {
         return ENVIRONMENT;
+    }
+
+    private void createAndSetNetwork(Environment environment, EnvironmentNetworkV4Request networkRequest) {
+        CloudPlatform cloudPlatform = CloudPlatform.valueOf(environment.getCloudPlatform());
+        BaseNetwork network = createNetworkIfPossible(environment, networkRequest, cloudPlatform);
+        if (network != null) {
+            environment.setNetwork(network);
+        }
+    }
+
+    private BaseNetwork createNetworkIfPossible(Environment environment, EnvironmentNetworkV4Request networkRequest, CloudPlatform cloudPlatform) {
+        BaseNetwork network = null;
+        if (networkRequest != null) {
+            EnvironmentNetworkConverter environmentNetworkConverter = environmentNetworkConverterMap.get(cloudPlatform);
+            if (environmentNetworkConverter != null) {
+                BaseNetwork baseNetwork = environmentNetworkConverter.convert(networkRequest, environment);
+                network = environmentNetworkService.save(baseNetwork);
+            }
+        }
+        return network;
     }
 }

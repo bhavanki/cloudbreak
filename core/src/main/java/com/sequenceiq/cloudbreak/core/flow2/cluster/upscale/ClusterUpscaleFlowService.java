@@ -19,15 +19,16 @@ import org.springframework.stereotype.Component;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.DetailedStackStatus;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.base.InstanceStatus;
 import com.sequenceiq.cloudbreak.common.type.HostMetadataState;
-import com.sequenceiq.cloudbreak.core.flow2.stack.FlowMessageService;
-import com.sequenceiq.cloudbreak.core.flow2.stack.Msg;
+import com.sequenceiq.cloudbreak.controller.exception.NotFoundException;
+import com.sequenceiq.cloudbreak.core.flow2.stack.CloudbreakFlowMessageService;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.host.HostGroup;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.host.HostMetadata;
 import com.sequenceiq.cloudbreak.domain.view.StackView;
-import com.sequenceiq.cloudbreak.repository.HostMetadataRepository;
+import com.sequenceiq.cloudbreak.message.Msg;
 import com.sequenceiq.cloudbreak.service.StackUpdater;
 import com.sequenceiq.cloudbreak.service.cluster.ClusterService;
 import com.sequenceiq.cloudbreak.service.hostgroup.HostGroupService;
+import com.sequenceiq.cloudbreak.service.hostmetadata.HostMetadataService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
 
 @Component
@@ -43,7 +44,7 @@ class ClusterUpscaleFlowService {
     private ClusterService clusterService;
 
     @Inject
-    private FlowMessageService flowMessageService;
+    private CloudbreakFlowMessageService flowMessageService;
 
     @Inject
     private StackUpdater stackUpdater;
@@ -52,7 +53,7 @@ class ClusterUpscaleFlowService {
     private HostGroupService hostGroupService;
 
     @Inject
-    private HostMetadataRepository hostMetadataRepository;
+    private HostMetadataService hostMetadataService;
 
     void ambariRepairSingleMasterStarted(long stackId) {
         clusterService.updateClusterStatusByStackId(stackId, UPDATE_IN_PROGRESS, "Repairing single master of cluster finished.");
@@ -66,35 +67,35 @@ class ClusterUpscaleFlowService {
 
     void upscalingClusterManager(long stackId) {
         clusterService.updateClusterStatusByStackId(stackId, UPDATE_IN_PROGRESS, "Upscaling the cluster.");
-        flowMessageService.fireEventAndLog(stackId, Msg.AMBARI_CLUSTER_SCALING_UP, UPDATE_IN_PROGRESS.name());
+        flowMessageService.fireEventAndLog(stackId, Msg.CLUSTER_SCALING_UP, UPDATE_IN_PROGRESS.name());
     }
 
-    void stopAmbariServer(long stackId) {
-        sendMessage(stackId, Msg.AMBARI_STOP_AMBARI_SERVER_STARTED, "Stopping ambari server.");
+    void stopClusterManagementServer(long stackId) {
+        sendMessage(stackId, Msg.CLUSTER_STOP_MANAGEMENT_SERVER_STARTED, "Stopping cluster management server.");
     }
 
-    void ambariStopComponents(long stackId) {
-        sendMessage(stackId, Msg.AMBARI_STOP_COMPONENTS_STARTED, "Stopping components.");
+    void clusterStopComponents(long stackId) {
+        sendMessage(stackId, Msg.CLUSTER_STOP_COMPONENTS_STARTED, "Stopping components.");
     }
 
-    void startAmbariServer(long stackId) {
-        sendMessage(stackId, Msg.AMBARI_START_AMBARI_SERVER_STARTED, "Starting ambari server.");
+    void startClusterManagementServer(long stackId) {
+        sendMessage(stackId, Msg.CLUSTER_START_MANAGEMENT_SERVER_STARTED, "Starting cluster management server.");
     }
 
-    void ambariRegenerateKeytabs(long stackId) {
-        sendMessage(stackId, Msg.AMBARI_REGENERATE_KEYTABS_STARTED, "Regenerating ambari keytabs.");
+    void regenerateKeytabs(long stackId) {
+        sendMessage(stackId, Msg.CLUSTER_REGENERATE_KEYTABS_STARTED, "Regenerating ambari keytabs.");
     }
 
-    void ambariReinstallComponents(long stackId) {
-        sendMessage(stackId, Msg.AMBARI_REINSTALL_COMPONENTS_STARTED, "Reinstalling ambari components.");
+    void reinstallClusterComponents(long stackId) {
+        sendMessage(stackId, Msg.CLUSTER_REINSTALL_COMPONENTS_STARTED, "Reinstalling cluster components.");
     }
 
-    void ambariComponentsStart(long stackId) {
-        sendMessage(stackId, Msg.AMBARI_START_COMPONENTS_STARTED, "Start components on new hosts.");
+    void startComponentsOnNewHosts(long stackId) {
+        sendMessage(stackId, Msg.CLUSTER_START_COMPONENTS_STARTED, "Start components on new hosts.");
     }
 
-    void ambariRestartAll(long stackId) {
-        sendMessage(stackId, Msg.AMBARI_RESTART_ALL_STARTED, "Restarting all components on all nodes.");
+    void restartAllClusterComponents(long stackId) {
+        sendMessage(stackId, Msg.CLUSTER_RESTART_ALL_STARTED, "Restarting all components on all nodes.");
     }
 
     private void sendMessage(long stackId, Msg ambariMessage, String statusReason) {
@@ -108,12 +109,12 @@ class ClusterUpscaleFlowService {
         if (success) {
             LOGGER.debug("Cluster upscaled successfully");
             clusterService.updateClusterStatusByStackId(stackView.getId(), AVAILABLE);
-            flowMessageService.fireEventAndLog(stackView.getId(), Msg.AMBARI_CLUSTER_SCALED_UP, AVAILABLE.name());
+            flowMessageService.fireEventAndLog(stackView.getId(), Msg.CLUSTER_SCALED_UP, AVAILABLE.name());
         } else {
             LOGGER.debug("Cluster upscale failed. {} hosts failed to upscale", numOfFailedHosts);
             clusterService.updateClusterStatusByStackId(stackView.getId(), UPDATE_FAILED);
-            flowMessageService.fireEventAndLog(stackView.getId(), Msg.AMBARI_CLUSTER_SCALING_FAILED, UPDATE_FAILED.name(), "added to",
-                    String.format("Ambari upscale operation failed on %d node(s).", numOfFailedHosts));
+            flowMessageService.fireEventAndLog(stackView.getId(), Msg.CLUSTER_SCALING_FAILED, UPDATE_FAILED.name(), "added to",
+                    String.format("Cluster upscale operation failed on %d node(s).", numOfFailedHosts));
         }
     }
 
@@ -122,12 +123,13 @@ class ClusterUpscaleFlowService {
         clusterService.updateClusterStatusByStackId(stackId, UPDATE_FAILED, errorDetails.getMessage());
         stackUpdater.updateStackStatus(stackId, DetailedStackStatus.PROVISIONED,
                 String.format("New node(s) could not be added to the cluster: %s", errorDetails));
-        flowMessageService.fireEventAndLog(stackId, Msg.AMBARI_CLUSTER_SCALING_FAILED, UPDATE_FAILED.name(), "added to", errorDetails);
+        flowMessageService.fireEventAndLog(stackId, Msg.CLUSTER_SCALING_FAILED, UPDATE_FAILED.name(), "added to", errorDetails);
     }
 
     private int updateMetadata(StackView stackView, String hostGroupName) {
         LOGGER.debug("Start update metadata");
-        HostGroup hostGroup = hostGroupService.getByClusterIdAndName(stackView.getClusterView().getId(), hostGroupName);
+        HostGroup hostGroup = hostGroupService.findHostGroupInClusterByName(stackView.getClusterView().getId(), hostGroupName)
+                .orElseThrow(NotFoundException.notFound("hostgroup", hostGroupName));
         Set<HostMetadata> hostMetadata = hostGroupService.findEmptyHostMetadataInHostGroup(hostGroup.getId());
         updateFailedHostMetaData(hostMetadata);
         int failedHosts = 0;
@@ -153,7 +155,7 @@ class ClusterUpscaleFlowService {
         for (HostMetadata metaData : hostMetadata) {
             if (!successHosts.contains(metaData.getHostName())) {
                 metaData.setHostMetadataState(HostMetadataState.UNHEALTHY);
-                hostMetadataRepository.save(metaData);
+                hostMetadataService.save(metaData);
             }
         }
     }

@@ -25,7 +25,6 @@ import org.springframework.core.convert.ConversionService;
 import com.sequenceiq.cloudbreak.TestUtil;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.mappable.ProviderParameterCalculator;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.credentials.responses.CredentialV4Response;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.flexsubscription.responses.FlexSubscriptionV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.CloudbreakDetailsV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.StackV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.authentication.StackAuthenticationV4Response;
@@ -44,12 +43,12 @@ import com.sequenceiq.cloudbreak.cloud.model.CloudbreakDetails;
 import com.sequenceiq.cloudbreak.cloud.model.Image;
 import com.sequenceiq.cloudbreak.cloud.model.StackTemplate;
 import com.sequenceiq.cloudbreak.cloud.model.component.StackRepoDetails;
+import com.sequenceiq.cloudbreak.cluster.service.ClusterComponentConfigProvider;
 import com.sequenceiq.cloudbreak.common.type.ResourceType;
 import com.sequenceiq.cloudbreak.converter.AbstractEntityConverterTest;
 import com.sequenceiq.cloudbreak.converter.v4.stacks.StackToStackV4ResponseConverter;
 import com.sequenceiq.cloudbreak.core.CloudbreakImageNotFoundException;
 import com.sequenceiq.cloudbreak.domain.FailurePolicy;
-import com.sequenceiq.cloudbreak.domain.FlexSubscription;
 import com.sequenceiq.cloudbreak.domain.Network;
 import com.sequenceiq.cloudbreak.domain.Orchestrator;
 import com.sequenceiq.cloudbreak.domain.Resource;
@@ -58,8 +57,7 @@ import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.DatalakeResources;
 import com.sequenceiq.cloudbreak.domain.view.EnvironmentView;
-import com.sequenceiq.cloudbreak.service.ClusterComponentConfigProvider;
-import com.sequenceiq.cloudbreak.service.ComponentConfigProvider;
+import com.sequenceiq.cloudbreak.service.ComponentConfigProviderService;
 import com.sequenceiq.cloudbreak.service.datalake.DatalakeResourcesService;
 import com.sequenceiq.cloudbreak.service.image.ImageService;
 
@@ -78,7 +76,7 @@ public class StackToStackV4ResponseConverterTest extends AbstractEntityConverter
     private ClusterComponentConfigProvider clusterComponentConfigProvider;
 
     @Mock
-    private ComponentConfigProvider componentConfigProvider;
+    private ComponentConfigProviderService componentConfigProviderService;
 
     @Mock
     private ConverterUtil converterUtil;
@@ -95,13 +93,13 @@ public class StackToStackV4ResponseConverterTest extends AbstractEntityConverter
         MockitoAnnotations.initMocks(this);
         when(imageService.getImage(anyLong())).thenReturn(new Image("cb-centos66-amb200-2015-05-25", Collections.emptyMap(), "redhat6",
                 "redhat6", "", "default", "default-id", new HashMap<>()));
-        when(componentConfigProvider.getCloudbreakDetails(anyLong())).thenReturn(new CloudbreakDetails("version"));
-        when(componentConfigProvider.getStackTemplate(anyLong())).thenReturn(new StackTemplate("{}", "version"));
+        when(componentConfigProviderService.getCloudbreakDetails(anyLong())).thenReturn(new CloudbreakDetails("version"));
+        when(componentConfigProviderService.getStackTemplate(anyLong())).thenReturn(new StackTemplate("{}", "version"));
         when(clusterComponentConfigProvider.getHDPRepo(anyLong())).thenReturn(new StackRepoDetails());
         when(clusterComponentConfigProvider.getAmbariRepo(anyLong())).thenReturn(new AmbariRepo());
         DatalakeResources datalakeResources = new DatalakeResources();
         datalakeResources.setName("name");
-        when(datalakeResourcesService.getDatalakeResourcesById(anyLong())).thenReturn(Optional.of(datalakeResources));
+        when(datalakeResourcesService.findById(anyLong())).thenReturn(Optional.of(datalakeResources));
     }
 
     @Test
@@ -114,7 +112,6 @@ public class StackToStackV4ResponseConverterTest extends AbstractEntityConverter
         given(conversionService.convert(any(), eq(StackAuthenticationV4Response.class))).willReturn(new StackAuthenticationV4Response());
         given(conversionService.convert(any(), eq(EnvironmentSettingsV4Response.class))).willReturn(new EnvironmentSettingsV4Response());
         given(conversionService.convert(any(), eq(CustomDomainSettingsV4Response.class))).willReturn(new CustomDomainSettingsV4Response());
-        given(conversionService.convert(any(), eq(FlexSubscriptionV4Response.class))).willReturn(new FlexSubscriptionV4Response());
         given(conversionService.convert(any(), eq(ClusterV4Response.class))).willReturn(new ClusterV4Response());
         given(conversionService.convert(any(), eq(NetworkV4Response.class))).willReturn(new NetworkV4Response());
         given(conversionService.convert(any(), eq(WorkspaceResourceV4Response.class))).willReturn(new WorkspaceResourceV4Response());
@@ -136,7 +133,6 @@ public class StackToStackV4ResponseConverterTest extends AbstractEntityConverter
         given(conversionService.convert(any(Image.class), eq(StackImageV4Response.class))).willReturn(new StackImageV4Response());
         given(conversionService.convert(any(), eq(EnvironmentSettingsV4Response.class))).willReturn(new EnvironmentSettingsV4Response());
         given(conversionService.convert(any(), eq(CustomDomainSettingsV4Response.class))).willReturn(new CustomDomainSettingsV4Response());
-        given(conversionService.convert(any(), eq(FlexSubscriptionV4Response.class))).willReturn(new FlexSubscriptionV4Response());
         given(conversionService.convert(any(), eq(StackAuthenticationV4Response.class))).willReturn(new StackAuthenticationV4Response());
         given(conversionService.convert(any(), eq(CredentialV4Response.class))).willReturn(new CredentialV4Response());
         given(conversionService.convert(any(), eq(NetworkV4Response.class))).willReturn(new NetworkV4Response());
@@ -161,7 +157,6 @@ public class StackToStackV4ResponseConverterTest extends AbstractEntityConverter
         given(conversionService.convert(any(Image.class), eq(StackImageV4Response.class))).willReturn(new StackImageV4Response());
         given(conversionService.convert(any(), eq(EnvironmentSettingsV4Response.class))).willReturn(new EnvironmentSettingsV4Response());
         given(conversionService.convert(any(), eq(CustomDomainSettingsV4Response.class))).willReturn(new CustomDomainSettingsV4Response());
-        given(conversionService.convert(any(), eq(FlexSubscriptionV4Response.class))).willReturn(new FlexSubscriptionV4Response());
         given(conversionService.convert(any(), eq(StackAuthenticationV4Response.class))).willReturn(new StackAuthenticationV4Response());
         given(conversionService.convert(any(), eq(CredentialV4Response.class))).willReturn(new CredentialV4Response());
         given(conversionService.convert(any(), eq(ClusterV4Response.class))).willReturn(new ClusterV4Response());
@@ -180,7 +175,7 @@ public class StackToStackV4ResponseConverterTest extends AbstractEntityConverter
     @Override
     public Stack createSource() {
         Stack stack = TestUtil.stack();
-        Cluster cluster = TestUtil.cluster(TestUtil.clusterDefinition(), stack, 1L);
+        Cluster cluster = TestUtil.cluster(TestUtil.blueprint(), stack, 1L);
         stack.setCluster(cluster);
         stack.setAvailabilityZone("avZone");
         Network network = new Network();
@@ -203,14 +198,13 @@ public class StackToStackV4ResponseConverterTest extends AbstractEntityConverter
         stack.setHostgroupNameAsHostname(false);
         stack.setClusterNameAsSubdomain(false);
         stack.setDatalakeResourceId(1L);
-        stack.setParameters(Map.of(PlatformParametersConsts.TTL, String.valueOf(System.currentTimeMillis())));
+        stack.setParameters(Map.of(PlatformParametersConsts.TTL_MILLIS, String.valueOf(System.currentTimeMillis())));
         Resource s3ArnResource = new Resource(ResourceType.S3_ACCESS_ROLE_ARN, "s3Arn", stack);
         stack.setResources(Collections.singleton(s3ArnResource));
         EnvironmentView environmentView = new EnvironmentView();
         environmentView.setName("env");
         stack.setEnvironment(environmentView);
         stack.setTerminated(100L);
-        stack.setFlexSubscription(new FlexSubscription());
         return stack;
     }
 }

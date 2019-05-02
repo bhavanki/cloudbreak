@@ -1,8 +1,10 @@
 package com.sequenceiq.cloudbreak.repository;
 
-import static com.sequenceiq.cloudbreak.authorization.WorkspacePermissions.Action.READ;
+import static com.sequenceiq.cloudbreak.authorization.ResourceAction.READ;
+import static com.sequenceiq.cloudbreak.repository.snippets.ShowTerminatedClustersSnippets.SHOW_TERMINATED_CLUSTERS_IF_REQUESTED;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import javax.transaction.Transactional;
@@ -20,8 +22,8 @@ import com.sequenceiq.cloudbreak.aspect.workspace.DisableCheckPermissions;
 import com.sequenceiq.cloudbreak.aspect.workspace.WorkspaceResourceType;
 import com.sequenceiq.cloudbreak.authorization.WorkspaceResource;
 import com.sequenceiq.cloudbreak.domain.Credential;
-import com.sequenceiq.cloudbreak.domain.FlexSubscription;
 import com.sequenceiq.cloudbreak.domain.Network;
+import com.sequenceiq.cloudbreak.domain.projection.AutoscaleStack;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
 import com.sequenceiq.cloudbreak.repository.workspace.WorkspaceResourceRepository;
@@ -37,7 +39,7 @@ public interface StackRepository extends WorkspaceResourceRepository<Stack, Long
     @Query("SELECT s from Stack s LEFT JOIN FETCH s.resources LEFT JOIN FETCH s.instanceGroups ig LEFT JOIN FETCH ig.instanceMetaData "
             + "WHERE s.cluster.ambariIp= :ambariIp AND s.terminated = null "
             + "AND (s.type is not 'TEMPLATE' OR s.type is null)")
-    Stack findByAmbari(@Param("ambariIp") String ambariIp);
+    Optional<Stack> findByAmbari(@Param("ambariIp") String ambariIp);
 
     @CheckPermissionsByWorkspaceId(action = READ)
     @Query("SELECT s FROM Stack s LEFT JOIN FETCH s.resources LEFT JOIN FETCH s.instanceGroups ig LEFT JOIN FETCH ig.instanceMetaData "
@@ -48,17 +50,29 @@ public interface StackRepository extends WorkspaceResourceRepository<Stack, Long
     @CheckPermissionsByReturnValue
     @Query("SELECT s FROM Stack s WHERE s.name= :name AND s.workspace.id= :workspaceId AND s.terminated = null "
             + "AND (s.type is not 'TEMPLATE' OR s.type is null)")
-    Stack findByNameAndWorkspaceId(@Param("name") String name, @Param("workspaceId") Long workspaceId);
+    Optional<Stack> findByNameAndWorkspaceId(@Param("name") String name, @Param("workspaceId") Long workspaceId);
+
+    @CheckPermissionsByReturnValue
+    @Query("SELECT s FROM Stack s WHERE s.name in :names AND s.workspace.id= :workspaceId AND s.terminated = null "
+            + "AND (s.type is not 'TEMPLATE' OR s.type is null)")
+    Set<Stack> findByNameInAndWorkspaceId(@Param("names") Set<String> name, @Param("workspaceId") Long workspaceId);
 
     @CheckPermissionsByReturnValue
     @Query("SELECT s FROM Stack s LEFT JOIN FETCH s.resources LEFT JOIN FETCH s.instanceGroups ig LEFT JOIN FETCH ig.instanceMetaData "
-            + "WHERE s.name= :name AND s.workspace.id= :workspaceId AND s.terminated = null")
-    Stack findByNameAndWorkspaceIdWithLists(@Param("name") String name, @Param("workspaceId") Long workspaceId);
+            + "WHERE s.name= :name AND s.workspace.id= :workspaceId AND " + SHOW_TERMINATED_CLUSTERS_IF_REQUESTED)
+    Optional<Stack> findByNameAndWorkspaceIdWithLists(@Param("name") String name, @Param("workspaceId") Long workspaceId,
+            @Param("showTerminated") Boolean showTerminated,
+            @Param("terminatedAfter") Long terminatedAfter);
 
     @CheckPermissionsByReturnValue
     @Query("SELECT s FROM Stack s LEFT JOIN FETCH s.resources LEFT JOIN FETCH s.instanceGroups ig LEFT JOIN FETCH ig.instanceMetaData WHERE s.id= :id "
             + "AND (s.type is not 'TEMPLATE' OR s.type is null)")
-    Stack findOneWithLists(@Param("id") Long id);
+    Optional<Stack> findOneWithLists(@Param("id") Long id);
+
+    @CheckPermissionsByReturnValue
+    @Query("SELECT s FROM Stack s LEFT JOIN FETCH s.resources LEFT JOIN FETCH s.instanceGroups ig LEFT JOIN FETCH ig.instanceMetaData "
+            + "LEFT JOIN FETCH s.cluster c LEFT JOIN FETCH c.components WHERE s.id= :id AND (s.type is not 'TEMPLATE' OR s.type is null)")
+    Optional<Stack> findOneWithCluster(@Param("id") Long id);
 
     @CheckPermissionsByReturnValue
     @Query("SELECT s FROM Stack s "
@@ -78,12 +92,12 @@ public interface StackRepository extends WorkspaceResourceRepository<Stack, Long
 
     @CheckPermissionsByReturnValue
     @Query("SELECT s FROM Stack s WHERE s.cluster.id= :clusterId AND (s.type is not 'TEMPLATE' OR s.type is null)")
-    Stack findStackForCluster(@Param("clusterId") Long clusterId);
+    Optional<Stack> findStackForCluster(@Param("clusterId") Long clusterId);
 
     @CheckPermissionsByWorkspace(action = READ, workspaceIndex = 1)
     @Query("SELECT s FROM Stack s LEFT JOIN FETCH s.resources LEFT JOIN FETCH s.instanceGroups ig LEFT JOIN FETCH ig.instanceMetaData "
             + "WHERE s.workspace= :workspace and s.name= :name AND (s.type is not 'TEMPLATE' OR s.type is null)")
-    Stack findByNameInWorkspaceWithLists(@Param("name") String name, @Param("workspace") Workspace workspace);
+    Optional<Stack> findByNameInWorkspaceWithLists(@Param("name") String name, @Param("workspace") Workspace workspace);
 
     @CheckPermissionsByReturnValue
     @Query("SELECT s FROM Stack s WHERE s.terminated = null AND (s.type is not 'TEMPLATE' OR s.type is null)")
@@ -108,17 +122,38 @@ public interface StackRepository extends WorkspaceResourceRepository<Stack, Long
     List<Stack> findByStatuses(@Param("statuses") List<Status> statuses);
 
     @CheckPermissionsByReturnValue
-    @Query("SELECT s FROM Stack s LEFT JOIN FETCH s.cluster LEFT JOIN FETCH s.credential LEFT JOIN FETCH s.network LEFT JOIN FETCH s.orchestrator "
-            + "LEFT JOIN FETCH s.stackStatus LEFT JOIN FETCH s.securityConfig LEFT JOIN FETCH s.failurePolicy LEFT JOIN FETCH"
-            + " s.instanceGroups ig LEFT JOIN FETCH ig.instanceMetaData WHERE s.terminated = null "
-            + "AND s.stackStatus.status <> 'DELETE_IN_PROGRESS' "
-            + "AND s.cluster.ambariIp IS NOT NULL "
-            + "AND s.cluster.status = 'AVAILABLE' "
+    @Query("SELECT s.id as id, "
+            + "s.name as name, "
+            + "s.gatewayPort as gatewayPort, "
+            + "s.created as created, "
+            + "ss.status as stackStatus, "
+            + "c.cloudbreakAmbariUser as cloudbreakAmbariUser, "
+            + "c.cloudbreakAmbariPassword as cloudbreakAmbariPassword, "
+            + "c.status as clusterStatus, "
+            + "ig.instanceGroupType as instanceGroupType, "
+            + "im.instanceMetadataType as instanceMetadataType, "
+            + "im.publicIp as publicIp, "
+            + "im.privateIp as privateIp, "
+            + "sc.usePrivateIpToTls as usePrivateIpToTls, "
+            + "w.id as workspaceId, "
+            + "t.name as tenantName, "
+            + "u.userId as userId "
+            + "FROM Stack s "
+            + "LEFT JOIN s.cluster c "
+            + "LEFT JOIN s.stackStatus ss "
+            + "LEFT JOIN s.instanceGroups ig "
+            + "LEFT JOIN ig.instanceMetaData im "
+            + "LEFT JOIN s.securityConfig sc "
+            + "LEFT JOIN s.workspace w "
+            + "LEFT JOIN w.tenant t "
+            + "LEFT JOIN s.creator u "
+            + "WHERE instanceGroupType = 'GATEWAY' "
+            + "AND instanceMetadataType = 'GATEWAY_PRIMARY' "
+            + "AND s.terminated = null "
+            + "AND c.ambariIp IS NOT NULL "
+            + "AND c.status = 'AVAILABLE' "
             + "AND (s.type is not 'TEMPLATE' OR s.type is null)")
-    Set<Stack> findAliveOnesWithAmbari();
-
-    @DisableCheckPermissions
-    Long countByFlexSubscription(FlexSubscription flexSubscription);
+    Set<AutoscaleStack> findAliveOnesWithAmbari();
 
     @DisableCheckPermissions
     Long countByCredential(Credential credential);
@@ -160,10 +195,11 @@ public interface StackRepository extends WorkspaceResourceRepository<Stack, Long
 
     @DisableCheckPermissions
     @Query("SELECT s.workspace FROM Stack s where s.id = :id")
-    Workspace findWorkspaceById(@Param("id") Long id);
+    Optional<Workspace> findWorkspaceById(@Param("id") Long id);
 
     @CheckPermissionsByReturnValue
     @Query("SELECT s FROM Stack s LEFT JOIN FETCH s.resources LEFT JOIN FETCH s.instanceGroups ig LEFT JOIN FETCH ig.instanceMetaData WHERE s.id= :id "
             + "AND s.type is 'TEMPLATE'")
-    Stack findTemplateWithLists(@Param("id") Long id);
+    Optional<Stack> findTemplateWithLists(@Param("id") Long id);
+
 }

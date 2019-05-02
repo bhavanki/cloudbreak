@@ -41,10 +41,12 @@ dependencies {
     compile (group: 'org.springframework.vault',            name: 'spring-vault-core',              version: '2.1.0.RELEASE') {
         exclude group: 'org.springframework'
     }
-    compile group: 'io.micrometer',                         name: 'micrometer-core',                version: '1.0.5'
-    compile group: 'io.micrometer',                         name: 'micrometer-registry-prometheus', version: '1.0.5'
+    compile group: 'io.micrometer',                         name: 'micrometer-core',                version: micrometerVersion
+    compile group: 'io.micrometer',                         name: 'micrometer-jersey2',             version: micrometerVersion
+    compile group: 'io.micrometer',                         name: 'micrometer-registry-prometheus', version: micrometerVersion
     compile group: 'com.fasterxml.jackson.core',            name: 'jackson-databind',               version: jacksonVersion
     compile group: 'commons-io',                            name: 'commons-io',                     version: '2.4'
+    compile group: 'com.github.ben-manes.caffeine',         name: 'caffeine',                       version: '2.7.0'
     compile group: 'com.google.guava',                      name: 'guava',                          version: guavaVersion
     compile group: 'org.freemarker',                        name: 'freemarker',                     version: freemarkerVersion
     compile group: 'org.bouncycastle',                      name: 'bcprov-jdk15on',                 version: bouncycastleVersion
@@ -63,7 +65,8 @@ dependencies {
 
     testCompile group: 'junit',                             name: 'junit',                          version: junitVersion
     testCompile group: 'org.mockito',                       name: 'mockito-core',                   version: mockitoVersion
-    testCompile group: 'org.springframework.boot',          name:'spring-boot-starter-test',        version: springBootVersion
+    testCompile group: 'org.springframework.boot',          name: 'spring-boot-starter-test',       version: springBootVersion
+    testCompile group: 'org.awaitility',                    name: 'awaitility',                     version: '3.1.6'
 
 }
 

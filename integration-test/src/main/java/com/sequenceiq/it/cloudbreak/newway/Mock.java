@@ -1,6 +1,6 @@
 package com.sequenceiq.it.cloudbreak.newway;
 
-import static com.sequenceiq.it.cloudbreak.newway.entity.ImageCatalogTestDto.IMAGE_CATALOG_URL;
+import static com.sequenceiq.it.cloudbreak.newway.dto.imagecatalog.ImageCatalogTestDto.IMAGE_CATALOG_URL;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -203,7 +203,7 @@ public class Mock extends SparkMockEntity {
         }
 
         @Override
-        public void doAction(IntegrationTestContext integrationTestContext, Entity entity) throws Exception {
+        public void doAction(IntegrationTestContext integrationTestContext, Entity entity) {
             Mock mock = (Mock) entity;
 
             MockModel model = this.model;

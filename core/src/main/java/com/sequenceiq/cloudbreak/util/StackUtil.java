@@ -1,14 +1,12 @@
 package com.sequenceiq.cloudbreak.util;
 
-import java.io.IOException;
 import java.time.Duration;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import javax.inject.Inject;
@@ -18,15 +16,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.gs.collections.impl.tuple.AbstractImmutableEntry;
 import com.gs.collections.impl.tuple.ImmutableEntry;
 import com.sequenceiq.cloudbreak.cloud.model.VolumeSetAttributes;
 import com.sequenceiq.cloudbreak.cloud.model.VolumeSetAttributes.Volume;
+import com.sequenceiq.cloudbreak.cluster.util.ResourceAttributeUtil;
 import com.sequenceiq.cloudbreak.common.model.OrchestratorType;
 import com.sequenceiq.cloudbreak.core.bootstrap.service.OrchestratorTypeResolver;
 import com.sequenceiq.cloudbreak.domain.Resource;
-import com.sequenceiq.cloudbreak.domain.json.Json;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceGroup;
@@ -34,7 +31,6 @@ import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceMetaData;
 import com.sequenceiq.cloudbreak.domain.view.StackView;
 import com.sequenceiq.cloudbreak.orchestrator.model.Node;
 import com.sequenceiq.cloudbreak.service.CloudbreakException;
-import com.sequenceiq.cloudbreak.service.CloudbreakServiceException;
 import com.sequenceiq.cloudbreak.service.stack.InstanceMetaDataService;
 
 @Service
@@ -48,12 +44,29 @@ public class StackUtil {
     @Inject
     private InstanceMetaDataService instanceMetaDataService;
 
+    @Inject
+    private ResourceAttributeUtil resourceAttributeUtil;
+
     public Set<Node> collectNodes(Stack stack) {
         Set<Node> agents = new HashSet<>();
         for (InstanceGroup instanceGroup : stack.getInstanceGroups()) {
             if (instanceGroup.getNodeCount() != 0) {
                 for (InstanceMetaData im : instanceGroup.getNotDeletedInstanceMetaDataSet()) {
                     if (im.getDiscoveryFQDN() != null) {
+                        agents.add(new Node(im.getPrivateIp(), im.getPublicIp(), im.getDiscoveryFQDN(), im.getInstanceGroupName()));
+                    }
+                }
+            }
+        }
+        return agents;
+    }
+
+    public Set<Node> collectNodesFromHostnames(Stack stack, Set<String> hostnames) {
+        Set<Node> agents = new HashSet<>();
+        for (InstanceGroup instanceGroup : stack.getInstanceGroups()) {
+            if (instanceGroup.getNodeCount() != 0) {
+                for (InstanceMetaData im : instanceGroup.getNotDeletedInstanceMetaDataSet()) {
+                    if (im.getDiscoveryFQDN() != null && hostnames.contains(im.getDiscoveryFQDN())) {
                         agents.add(new Node(im.getPrivateIp(), im.getPublicIp(), im.getDiscoveryFQDN(), im.getInstanceGroupName()));
                     }
                 }
@@ -106,7 +119,8 @@ public class StackUtil {
 
     private Map<String, Map<String, String>> createInstanceToVolumeInfoMap(List<Resource> volumeSets) {
         return volumeSets.stream()
-                .map(volumeSet -> new ImmutableEntry<>(volumeSet.getInstanceId(), getTypedAttributes(volumeSet, VolumeSetAttributes.class)))
+                .map(volumeSet -> new ImmutableEntry<>(volumeSet.getInstanceId(),
+                        resourceAttributeUtil.getTypedAttributes(volumeSet, VolumeSetAttributes.class)))
                 .map(entry -> {
                     List<Volume> volumes = entry.getValue().map(VolumeSetAttributes::getVolumes).orElse(List.of());
                     List<String> dataVolumes = volumes.stream().map(Volume::getDevice).collect(Collectors.toList());
@@ -120,31 +134,28 @@ public class StackUtil {
                 .collect(Collectors.toMap(AbstractImmutableEntry::getKey, AbstractImmutableEntry::getValue));
     }
 
-    public String extractAmbariIp(StackView stackView) {
-        return extractAmbariIp(stackView.getId(), stackView.getOrchestrator().getType(),
+    public String extractClusterManagerIp(StackView stackView) {
+        return extractClusterManagerIp(stackView.getId(), stackView.getOrchestrator().getType(),
                 stackView.getClusterView() != null ? stackView.getClusterView().getAmbariIp() : null);
     }
 
-    public String extractAmbariIp(Stack stack) {
-        return extractAmbariIp(stack.getId(), stack.getOrchestrator().getType(), stack.getCluster() != null ? stack.getCluster().getAmbariIp() : null);
+    public String extractClusterManagerIp(Stack stack) {
+        return extractClusterManagerIp(stack.getId(), stack.getOrchestrator().getType(), stack.getCluster() != null ? stack.getCluster().getAmbariIp() : null);
     }
 
-    private String extractAmbariIp(long stackId, String orchestratorName, String ambariIp) {
-        String result = null;
+    private String extractClusterManagerIp(long stackId, String orchestratorName, String ambariIp) {
+        AtomicReference<String> result = new AtomicReference<>(null);
         try {
             OrchestratorType orchestratorType = orchestratorTypeResolver.resolveType(orchestratorName);
             if (orchestratorType != null && orchestratorType.containerOrchestrator()) {
-                result = ambariIp;
+                result.set(ambariIp);
             } else {
-                InstanceMetaData gatewayInstance = instanceMetaDataService.getPrimaryGatewayInstanceMetadata(stackId);
-                if (gatewayInstance != null) {
-                    result = gatewayInstance.getPublicIpWrapper();
-                }
+                instanceMetaDataService.getPrimaryGatewayInstanceMetadata(stackId).ifPresent(imd -> result.set(imd.getPublicIpWrapper()));
             }
         } catch (CloudbreakException ex) {
             LOGGER.error("Could not resolve orchestrator type: ", ex);
         }
-        return result;
+        return result.get();
     }
 
     public long getUptimeForCluster(Cluster cluster, boolean addUpsinceToUptime) {
@@ -157,22 +168,5 @@ public class StackUtil {
             uptime = uptime.plusMillis(now - cluster.getUpSince());
         }
         return uptime.toMillis();
-    }
-
-    public <T> Optional<T> getTypedAttributes(Resource resource, Class<T> attributeType) {
-        Json attributes = resource.getAttributes();
-        try {
-            return Objects.nonNull(attributes.getValue()) ? Optional.ofNullable(attributes.get(attributeType)) : Optional.empty();
-        } catch (IOException e) {
-            throw new CloudbreakServiceException("Failed to parse attributes to type: " + attributeType.getSimpleName(), e);
-        }
-    }
-
-    public <T> void setTypedAttributes(Resource resource, T attributes) {
-        try {
-            resource.setAttributes(new Json(attributes));
-        } catch (JsonProcessingException e) {
-            throw new CloudbreakServiceException("Failed to parse attributes from type: " + attributes.getClass().getSimpleName(), e);
-        }
     }
 }

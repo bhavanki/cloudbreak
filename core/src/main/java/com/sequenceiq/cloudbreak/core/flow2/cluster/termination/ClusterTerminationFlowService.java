@@ -4,6 +4,8 @@ import static com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status.AVAILABLE;
 import static com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status.DELETE_COMPLETED;
 import static com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status.DELETE_FAILED;
 
+import java.util.Optional;
+
 import javax.inject.Inject;
 
 import org.slf4j.Logger;
@@ -14,15 +16,14 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.common.DetailedStackStatus;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status;
 import com.sequenceiq.cloudbreak.cloud.store.InMemoryStateStore;
 import com.sequenceiq.cloudbreak.core.flow2.cluster.ClusterViewContext;
-import com.sequenceiq.cloudbreak.core.flow2.stack.FlowMessageService;
-import com.sequenceiq.cloudbreak.core.flow2.stack.Msg;
+import com.sequenceiq.cloudbreak.core.flow2.stack.CloudbreakFlowMessageService;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.domain.view.ClusterView;
 import com.sequenceiq.cloudbreak.domain.view.StackView;
+import com.sequenceiq.cloudbreak.message.Msg;
 import com.sequenceiq.cloudbreak.reactor.api.event.StackFailureEvent;
 import com.sequenceiq.cloudbreak.reactor.api.event.orchestration.ClusterTerminationResult;
 import com.sequenceiq.cloudbreak.service.StackUpdater;
-import com.sequenceiq.cloudbreak.service.TransactionService.TransactionExecutionException;
 import com.sequenceiq.cloudbreak.service.cluster.ClusterService;
 
 @Service
@@ -36,14 +37,14 @@ public class ClusterTerminationFlowService {
     private StackUpdater stackUpdater;
 
     @Inject
-    private FlowMessageService flowMessageService;
+    private CloudbreakFlowMessageService flowMessageService;
 
     public void terminateCluster(ClusterViewContext context) {
         clusterService.updateClusterStatusByStackId(context.getStackId(), Status.DELETE_IN_PROGRESS);
         LOGGER.debug("Cluster delete started.");
     }
 
-    public void finishClusterTerminationAllowed(ClusterViewContext context, ClusterTerminationResult payload) throws TransactionExecutionException {
+    public void finishClusterTerminationAllowed(ClusterViewContext context, ClusterTerminationResult payload) {
         LOGGER.debug("Terminate cluster result: {}", payload);
         StackView stackView = context.getStack();
         ClusterView clusterView = context.getClusterView();
@@ -66,12 +67,13 @@ public class ClusterTerminationFlowService {
         LOGGER.debug("Handling cluster delete failure event.");
         Exception errorDetails = payload.getException();
         LOGGER.info("Error during cluster termination flow: ", errorDetails);
-        Cluster cluster = clusterService.retrieveClusterByStackIdWithoutAuth(payload.getStackId());
-        if (cluster != null) {
-            cluster.setStatus(DELETE_FAILED);
-            cluster.setStatusReason(errorDetails.getMessage());
-            clusterService.updateCluster(cluster);
-            flowMessageService.fireEventAndLog(cluster.getStack().getId(), Msg.CLUSTER_DELETE_FAILED, DELETE_FAILED.name(), errorDetails.getMessage());
+        Optional<Cluster> cluster = clusterService.retrieveClusterByStackIdWithoutAuth(payload.getStackId());
+        if (cluster.isPresent()) {
+            cluster.get().setStatus(DELETE_FAILED);
+            cluster.get().setStatusReason(errorDetails.getMessage());
+            clusterService.updateCluster(cluster.get());
+            flowMessageService.fireEventAndLog(cluster.get().getStack().getId(), Msg.CLUSTER_DELETE_FAILED, DELETE_FAILED.name(), errorDetails.getMessage());
         }
     }
+
 }

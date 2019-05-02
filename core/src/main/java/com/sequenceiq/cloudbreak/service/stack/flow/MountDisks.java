@@ -16,6 +16,7 @@ import org.springframework.util.StringUtils;
 
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.base.InstanceStatus;
 import com.sequenceiq.cloudbreak.cloud.model.VolumeSetAttributes;
+import com.sequenceiq.cloudbreak.cluster.util.ResourceAttributeUtil;
 import com.sequenceiq.cloudbreak.common.model.OrchestratorType;
 import com.sequenceiq.cloudbreak.core.CloudbreakSecuritySetupException;
 import com.sequenceiq.cloudbreak.core.bootstrap.service.OrchestratorTypeResolver;
@@ -28,9 +29,9 @@ import com.sequenceiq.cloudbreak.orchestrator.host.HostOrchestrator;
 import com.sequenceiq.cloudbreak.orchestrator.model.GatewayConfig;
 import com.sequenceiq.cloudbreak.orchestrator.model.Node;
 import com.sequenceiq.cloudbreak.orchestrator.state.ExitCriteriaModel;
-import com.sequenceiq.cloudbreak.repository.ResourceRepository;
 import com.sequenceiq.cloudbreak.service.CloudbreakException;
 import com.sequenceiq.cloudbreak.service.GatewayConfigService;
+import com.sequenceiq.cloudbreak.service.resource.ResourceService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
 import com.sequenceiq.cloudbreak.util.StackUtil;
 
@@ -46,7 +47,10 @@ public class MountDisks {
     private StackUtil stackUtil;
 
     @Inject
-    private ResourceRepository resourceRepository;
+    private ResourceAttributeUtil resourceAttributeUtil;
+
+    @Inject
+    private ResourceService resourceService;
 
     @Inject
     private GatewayConfigService gatewayConfigService;
@@ -102,12 +106,12 @@ public class MountDisks {
     }
 
     private void persistUuidAndFstab(Stack stack, String instanceId, String uuids, String fstab) {
-        resourceRepository.saveAll(stack.getDiskResources().stream()
+        resourceService.saveAll(stack.getDiskResources().stream()
                 .filter(volumeSet -> instanceId.equals(volumeSet.getInstanceId()))
-                .peek(volumeSet -> stackUtil.getTypedAttributes(volumeSet, VolumeSetAttributes.class).ifPresent(volumeSetAttributes -> {
+                .peek(volumeSet -> resourceAttributeUtil.getTypedAttributes(volumeSet, VolumeSetAttributes.class).ifPresent(volumeSetAttributes -> {
                     volumeSetAttributes.setUuids(uuids);
                     volumeSetAttributes.setFstab(fstab);
-                    stackUtil.setTypedAttributes(volumeSet, volumeSetAttributes);
+                    resourceAttributeUtil.setTypedAttributes(volumeSet, volumeSetAttributes);
                 }))
                 .collect(Collectors.toList()));
     }

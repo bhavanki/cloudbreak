@@ -15,9 +15,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpMethod;
 
 import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
-import com.sequenceiq.it.cloudbreak.newway.entity.stack.StackTestDto;
 import com.sequenceiq.it.cloudbreak.newway.context.MockedTestContext;
 import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
+import com.sequenceiq.it.cloudbreak.newway.dto.stack.StackTestDto;
 import com.sequenceiq.it.verification.Call;
 
 import spark.Response;
@@ -43,7 +43,7 @@ public class MockVerification implements AssertionV2<StackTestDto> {
     public MockVerification(HttpMethod httpMethod, String path, Integer exactTimes) {
         this.path = path;
         this.httpMethod = httpMethod;
-        this.exactTimes = 1;
+        this.exactTimes = exactTimes;
     }
 
     public static MockVerification verify(HttpMethod httpMethod, String path) {
@@ -94,7 +94,7 @@ public class MockVerification implements AssertionV2<StackTestDto> {
     private void checkExactTimes(int times) {
         if (exactTimes != null) {
             if (exactTimes != times) {
-                throw new RuntimeException(path + "with body" + generateBodyTimesLog(bodyContainsList) + " "
+                throw new RuntimeException(path + " with body" + generateBodyTimesLog(bodyContainsList) + " "
                         + "request should have been invoked exactly " + exactTimes + " times, but it was invoked " + times + " times");
             }
         }
@@ -159,14 +159,14 @@ public class MockVerification implements AssertionV2<StackTestDto> {
     }
 
     @Override
-    public StackTestDto doAssertion(TestContext testContext, StackTestDto entity, CloudbreakClient cloudbreakClient) throws Exception {
+    public StackTestDto doAssertion(TestContext testContext, StackTestDto testDto, CloudbreakClient cloudbreakClient) {
         MockedTestContext mockedTestContext = (MockedTestContext) testContext;
         Map<Call, Response> requestResponseMap = mockedTestContext.getSparkServer().getRequestResponseMap();
         int matchesCount = getTimesMatched(requestResponseMap);
         logVerify();
         checkExactTimes(matchesCount);
         checkAtLeast(matchesCount);
-        return entity;
+        return testDto;
     }
 
     private String generateBodyTimesLog(Map<String, Integer> bodyContainsList) {

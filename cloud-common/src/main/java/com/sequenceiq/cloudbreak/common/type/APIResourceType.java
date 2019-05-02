@@ -4,7 +4,7 @@ public enum APIResourceType {
     TEMPLATE("t"),
     CONSTRAINT_TEMPLATE("ct"),
     STACK("st"),
-    CLUSTER_DEFINITION("cd"),
+    BLUEPRINT("cd"),
     CLUSTER("cl"),
     CREDENTIAL("c"),
     RECIPE("hrec"),
@@ -15,9 +15,7 @@ public enum APIResourceType {
     CLUSTER_TEMPLATE("ct"),
     RDS_CONFIG("rds"),
     LDAP_CONFIG("ldap"),
-    SMARTSENSE_SUBSCRIPTION("sss"),
     IMAGE_CATALOG("ic"),
-    FLEX_SUBSCRIPTION("fs"),
     MANAGEMENT_PACK("mpack"),
     WORKSPACE("org");
 

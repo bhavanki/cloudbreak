@@ -6,9 +6,9 @@ import javax.validation.Valid;
 import javax.validation.constraints.Size;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.JsonEntity;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.base.StatusRequest;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ambari.stackrepository.StackRepositoryV4Request;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.JsonEntity;
 import com.sequenceiq.cloudbreak.api.model.annotations.TransformGetterType;
 import com.sequenceiq.cloudbreak.doc.ModelDescriptions.ClusterModelDescription;
 import com.sequenceiq.cloudbreak.doc.ModelDescriptions.StackModelDescription;
@@ -29,12 +29,12 @@ public class UpdateClusterV4Request implements JsonEntity {
     @ApiModelProperty(ClusterModelDescription.USERNAME_PASSWORD)
     private UserNamePasswordV4Request userNamePassword;
 
-    @ApiModelProperty(ClusterModelDescription.CLUSTER_DEFINITION_ID)
-    private String clusterDefinitionName;
+    @ApiModelProperty(ClusterModelDescription.BLUEPRINT_ID)
+    private String blueprintName;
 
     @TransformGetterType
-    @ApiModelProperty(ClusterModelDescription.VALIDATE_CLUSTER_DEFINITION)
-    private Boolean validateClusterDefinition = Boolean.TRUE;
+    @ApiModelProperty(ClusterModelDescription.VALIDATE_BLUEPRINT)
+    private Boolean validateBlueprint = Boolean.TRUE;
 
     @ApiModelProperty(ClusterModelDescription.HOSTGROUPS)
     private Set<HostGroupV4Request> hostgroups;
@@ -74,20 +74,20 @@ public class UpdateClusterV4Request implements JsonEntity {
         this.userNamePassword = userNamePassword;
     }
 
-    public String getClusterDefinitionName() {
-        return clusterDefinitionName;
+    public String getBlueprintName() {
+        return blueprintName;
     }
 
-    public void setClusterDefinitionName(String clusterDefinitionName) {
-        this.clusterDefinitionName = clusterDefinitionName;
+    public void setBlueprintName(String blueprintName) {
+        this.blueprintName = blueprintName;
     }
 
-    public Boolean getValidateClusterDefinition() {
-        return validateClusterDefinition;
+    public Boolean getValidateBlueprint() {
+        return validateBlueprint;
     }
 
-    public void setValidateClusterDefinition(Boolean validateClusterDefinition) {
-        this.validateClusterDefinition = validateClusterDefinition;
+    public void setValidateBlueprint(Boolean validateBlueprint) {
+        this.validateBlueprint = validateBlueprint;
     }
 
     public Set<HostGroupV4Request> getHostgroups() {

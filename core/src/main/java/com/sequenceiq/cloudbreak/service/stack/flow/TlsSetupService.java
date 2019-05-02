@@ -22,10 +22,10 @@ import com.sequenceiq.cloudbreak.client.PkiUtil;
 import com.sequenceiq.cloudbreak.client.RestClientUtil;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceMetaData;
-import com.sequenceiq.cloudbreak.repository.InstanceMetaDataRepository;
+import com.sequenceiq.cloudbreak.polling.PollingService;
 import com.sequenceiq.cloudbreak.service.CloudbreakException;
 import com.sequenceiq.cloudbreak.service.GatewayConfigService;
-import com.sequenceiq.cloudbreak.service.PollingService;
+import com.sequenceiq.cloudbreak.service.stack.InstanceMetaDataService;
 
 @Component
 public class TlsSetupService {
@@ -46,7 +46,7 @@ public class TlsSetupService {
     private GatewayConfigService gatewayConfigService;
 
     @Inject
-    private InstanceMetaDataRepository instanceMetaDataRepository;
+    private InstanceMetaDataService instanceMetaDataService;
 
     public void setupTls(Stack stack, InstanceMetaData gwInstance) throws CloudbreakException {
         try {
@@ -62,19 +62,19 @@ public class TlsSetupService {
                 nginxCertListenerTask, new NginxPollerObject(stack, client, ip, gatewayPort, x509TrustManager),
                 POLLING_INTERVAL, MAX_ATTEMPTS_FOR_HOSTS);
             WebTarget nginxTarget = client.target(String.format("https://%s:%d", ip, gatewayPort));
-            nginxTarget.path("/").request().get();
+            nginxTarget.path("/").request().get().close();
             X509Certificate[] chain = x509TrustManager.getChain();
             String serverCert = PkiUtil.convert(chain[0]);
             InstanceMetaData metaData = getInstanceMetaData(gwInstance);
             metaData.setServerCert(BaseEncoding.base64().encode(serverCert.getBytes()));
-            instanceMetaDataRepository.save(metaData);
+            instanceMetaDataService.save(metaData);
         } catch (Exception e) {
             throw new CloudbreakException("Failed to retrieve the server's certificate", e);
         }
     }
 
     private InstanceMetaData getInstanceMetaData(InstanceMetaData gwInstance) {
-        return instanceMetaDataRepository.findById(gwInstance.getId())
+        return instanceMetaDataService.findById(gwInstance.getId())
                 .orElseThrow(notFound("Instance metadata", gwInstance.getId()));
     }
 

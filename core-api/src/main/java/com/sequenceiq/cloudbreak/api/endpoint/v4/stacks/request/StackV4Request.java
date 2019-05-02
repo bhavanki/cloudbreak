@@ -27,7 +27,7 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.image.ImageSetti
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.instancegroup.InstanceGroupV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.network.NetworkV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.tags.TagsV4Request;
-import com.sequenceiq.cloudbreak.doc.ModelDescriptions;
+import com.sequenceiq.cloudbreak.doc.ModelDescriptions.ClusterModelDescription;
 import com.sequenceiq.cloudbreak.doc.ModelDescriptions.StackModelDescription;
 
 import io.swagger.annotations.ApiModel;
@@ -50,7 +50,7 @@ public class StackV4Request extends StackV4Base {
     private TagsV4Request tags;
 
     @Valid
-    @ApiModelProperty(value = PLACEMENT_SETTINGS)
+    @ApiModelProperty(PLACEMENT_SETTINGS)
     private PlacementSettingsV4Request placement;
 
     @NotNull
@@ -78,12 +78,9 @@ public class StackV4Request extends StackV4Base {
     @Max(value = 65535, message = "Port should be between 1025 and 65535")
     private Integer gatewayPort;
 
-    @ApiModelProperty(StackModelDescription.FLEX_ID)
-    private Long flexId;
-
     private StackType type;
 
-    @ApiModelProperty(ModelDescriptions.ClusterModelDescription.SHARED_SERVICE_REQUEST)
+    @ApiModelProperty(ClusterModelDescription.SHARED_SERVICE_REQUEST)
     private SharedServiceV4Request sharedService;
 
     @ApiModelProperty(StackModelDescription.INPUTS)
@@ -159,14 +156,6 @@ public class StackV4Request extends StackV4Base {
 
     public void setGatewayPort(Integer gatewayPort) {
         this.gatewayPort = gatewayPort;
-    }
-
-    public Long getFlexId() {
-        return flexId;
-    }
-
-    public void setFlexId(Long flexId) {
-        this.flexId = flexId;
     }
 
     public StackType getType() {

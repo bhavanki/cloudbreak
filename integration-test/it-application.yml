@@ -1,16 +1,15 @@
 mock:
   server:
-    address: test.service.consul
+    address: test
   image:
     catalog:
-      url: https://test.service.consul:9443/imagecatalog
+      url: https://test:9443/imagecatalog
 
 integrationtest:
     testsuite:
-      threadPoolSize: 1
-      pollingInterval: 1000
+      threadPoolSize: 5
     defaultBlueprintName: hdp-small-default
     outputdir: /it
     command: suites
     cleanup:
-      cleanupBeforeStart: true
+      cleanupBeforeStart: false

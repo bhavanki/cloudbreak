@@ -2,6 +2,8 @@ package com.sequenceiq.cloudbreak.api.endpoint.v4.imagecatalog;
 
 import static com.sequenceiq.cloudbreak.doc.Notes.IMAGE_CATALOG_NOTES;
 
+import java.util.Set;
+
 import javax.validation.Valid;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
@@ -22,7 +24,6 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.imagecatalog.responses.ImageCat
 import com.sequenceiq.cloudbreak.api.endpoint.v4.imagecatalog.responses.ImagesV4Response;
 import com.sequenceiq.cloudbreak.doc.ContentType;
 import com.sequenceiq.cloudbreak.doc.ControllerDescription;
-import com.sequenceiq.cloudbreak.doc.Notes;
 import com.sequenceiq.cloudbreak.doc.OperationDescriptions.ImageCatalogOpDescription;
 
 import io.swagger.annotations.Api;
@@ -36,14 +37,14 @@ public interface ImageCatalogV4Endpoint {
     @GET
     @Path("")
     @Produces(MediaType.APPLICATION_JSON)
-    @ApiOperation(value = ImageCatalogOpDescription.LIST_BY_WORKSPACE, produces = ContentType.JSON, notes = Notes.IMAGE_CATALOG_NOTES,
+    @ApiOperation(value = ImageCatalogOpDescription.LIST_BY_WORKSPACE, produces = ContentType.JSON, notes = IMAGE_CATALOG_NOTES,
             nickname = "listImageCatalogsByWorkspace")
     ImageCatalogV4Responses list(@PathParam("workspaceId") Long workspaceId);
 
     @GET
     @Path("{name}")
     @Produces(MediaType.APPLICATION_JSON)
-    @ApiOperation(value = ImageCatalogOpDescription.GET_BY_NAME_IN_WORKSPACE, produces = ContentType.JSON, notes = Notes.IMAGE_CATALOG_NOTES,
+    @ApiOperation(value = ImageCatalogOpDescription.GET_BY_NAME_IN_WORKSPACE, produces = ContentType.JSON, notes = IMAGE_CATALOG_NOTES,
             nickname = "getImageCatalogInWorkspace")
     ImageCatalogV4Response get(@PathParam("workspaceId") Long workspaceId, @PathParam("name") String name,
             @QueryParam("withImages") @DefaultValue("false") Boolean withImages);
@@ -51,16 +52,23 @@ public interface ImageCatalogV4Endpoint {
     @POST
     @Path("")
     @Produces(MediaType.APPLICATION_JSON)
-    @ApiOperation(value = ImageCatalogOpDescription.CREATE_IN_WORKSPACE, produces = ContentType.JSON, notes = Notes.IMAGE_CATALOG_NOTES,
+    @ApiOperation(value = ImageCatalogOpDescription.CREATE_IN_WORKSPACE, produces = ContentType.JSON, notes = IMAGE_CATALOG_NOTES,
             nickname = "createImageCatalogInWorkspace")
     ImageCatalogV4Response create(@PathParam("workspaceId") Long workspaceId, @Valid ImageCatalogV4Request request);
 
     @DELETE
     @Path("{name}")
     @Produces(MediaType.APPLICATION_JSON)
-    @ApiOperation(value = ImageCatalogOpDescription.DELETE_BY_NAME_IN_WORKSPACE, produces = ContentType.JSON, notes = Notes.IMAGE_CATALOG_NOTES,
+    @ApiOperation(value = ImageCatalogOpDescription.DELETE_BY_NAME_IN_WORKSPACE, produces = ContentType.JSON, notes = IMAGE_CATALOG_NOTES,
             nickname = "deleteImageCatalogInWorkspace")
     ImageCatalogV4Response delete(@PathParam("workspaceId") Long workspaceId, @PathParam("name") String name);
+
+    @DELETE
+    @Path("")
+    @Produces(MediaType.APPLICATION_JSON)
+    @ApiOperation(value = ImageCatalogOpDescription.DELETE_MULTIPLE_BY_NAME_IN_WORKSPACE, produces = ContentType.JSON, notes = IMAGE_CATALOG_NOTES,
+            nickname = "deleteImageCatalogsInWorkspace")
+    ImageCatalogV4Responses deleteMultiple(@PathParam("workspaceId") Long workspaceId, Set<String> names);
 
     @PUT
     @Path("")

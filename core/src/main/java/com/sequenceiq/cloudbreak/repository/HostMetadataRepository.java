@@ -1,8 +1,10 @@
 package com.sequenceiq.cloudbreak.repository;
 
+import java.util.Optional;
 import java.util.Set;
 
 import javax.transaction.Transactional;
+import javax.transaction.Transactional.TxType;
 
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,7 +15,7 @@ import com.sequenceiq.cloudbreak.domain.stack.cluster.host.HostMetadata;
 import com.sequenceiq.cloudbreak.service.EntityType;
 
 @EntityType(entityClass = HostMetadata.class)
-@Transactional(Transactional.TxType.REQUIRED)
+@Transactional(TxType.REQUIRED)
 @DisableHasPermission
 public interface HostMetadataRepository extends DisabledBaseRepository<HostMetadata, Long> {
 
@@ -26,7 +28,7 @@ public interface HostMetadataRepository extends DisabledBaseRepository<HostMetad
 
     @Query("SELECT h FROM HostMetadata h "
             + "WHERE h.hostGroup.cluster.id= :clusterId AND h.hostName = :hostName")
-    HostMetadata findHostInClusterByName(@Param("clusterId") Long clusterId, @Param("hostName") String hostName);
+    Optional<HostMetadata> findHostInClusterByName(@Param("clusterId") Long clusterId, @Param("hostName") String hostName);
 
     @Query("SELECT h FROM HostMetadata h "
             + "WHERE h.hostGroup.cluster.id= :clusterId AND h.hostName = :hostName")

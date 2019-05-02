@@ -20,13 +20,13 @@ import com.sequenceiq.cloudbreak.authorization.WorkspaceResource;
 import com.sequenceiq.cloudbreak.common.type.APIResourceType;
 import com.sequenceiq.cloudbreak.controller.exception.BadRequestException;
 import com.sequenceiq.cloudbreak.domain.SecurityGroup;
-import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
-import com.sequenceiq.cloudbreak.domain.workspace.User;
 import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceGroup;
-import com.sequenceiq.cloudbreak.repository.InstanceGroupRepository;
+import com.sequenceiq.cloudbreak.domain.workspace.User;
+import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
 import com.sequenceiq.cloudbreak.repository.SecurityGroupRepository;
 import com.sequenceiq.cloudbreak.repository.workspace.WorkspaceResourceRepository;
 import com.sequenceiq.cloudbreak.service.AbstractWorkspaceAwareResourceService;
+import com.sequenceiq.cloudbreak.service.stack.InstanceGroupService;
 import com.sequenceiq.cloudbreak.util.NameUtil;
 
 @Service
@@ -37,11 +37,10 @@ public class SecurityGroupService extends AbstractWorkspaceAwareResourceService<
     private SecurityGroupRepository groupRepository;
 
     @Inject
-    private InstanceGroupRepository instanceGroupRepository;
+    private InstanceGroupService instanceGroupService;
 
-    public SecurityGroup create(User user, SecurityGroup securityGroup, Workspace workspace) {
+    public SecurityGroup create(User user, SecurityGroup securityGroup) {
         LOGGER.debug("Creating SecurityGroup: [User: '{}']", user.getUserId());
-        securityGroup.setWorkspace(workspace);
         try {
             return groupRepository.save(securityGroup);
         } catch (DataIntegrityViolationException ex) {
@@ -59,14 +58,13 @@ public class SecurityGroupService extends AbstractWorkspaceAwareResourceService<
     }
 
     public void delete(String name, Workspace workspace) {
-        SecurityGroup securityGroup = Optional.ofNullable(groupRepository.findByNameAndWorkspace(name, workspace))
-                .orElseThrow(notFound("SecurityGroup", name));
+        SecurityGroup securityGroup = groupRepository.findByNameAndWorkspace(name, workspace).orElseThrow(notFound("SecurityGroup", name));
         deleteImpl(securityGroup);
     }
 
     public void deleteImpl(SecurityGroup securityGroup) {
         LOGGER.debug("Deleting SecurityGroup with name: {}", securityGroup.getName());
-        List<InstanceGroup> instanceGroupsWithThisSecurityGroup = new ArrayList<>(instanceGroupRepository.findBySecurityGroup(securityGroup));
+        List<InstanceGroup> instanceGroupsWithThisSecurityGroup = new ArrayList<>(instanceGroupService.findBySecurityGroup(securityGroup));
         if (!instanceGroupsWithThisSecurityGroup.isEmpty()) {
             if (instanceGroupsWithThisSecurityGroup.size() > 1) {
                 String clusters = instanceGroupsWithThisSecurityGroup
@@ -99,7 +97,7 @@ public class SecurityGroupService extends AbstractWorkspaceAwareResourceService<
 
     @Override
     public WorkspaceResource resource() {
-        return WorkspaceResource.SECURITY_GROUP;
+        return WorkspaceResource.STACK;
     }
 
     @Override
@@ -111,4 +109,13 @@ public class SecurityGroupService extends AbstractWorkspaceAwareResourceService<
     protected void prepareCreation(SecurityGroup resource) {
 
     }
+
+    public SecurityGroup save(SecurityGroup securityGroup) {
+        return repository().save(securityGroup);
+    }
+
+    public Optional<SecurityGroup> findById(Long id) {
+        return repository().findById(id);
+    }
+
 }

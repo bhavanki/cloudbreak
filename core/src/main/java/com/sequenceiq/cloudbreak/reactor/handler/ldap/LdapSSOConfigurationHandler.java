@@ -7,17 +7,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import com.sequenceiq.cloudbreak.cloud.event.Selectable;
-import com.sequenceiq.cloudbreak.cloud.model.AmbariRepo;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
+import com.sequenceiq.cloudbreak.orchestrator.model.GatewayConfig;
 import com.sequenceiq.cloudbreak.reactor.api.event.EventSelectorUtil;
 import com.sequenceiq.cloudbreak.reactor.api.event.ldap.LdapSSOConfigurationFailed;
 import com.sequenceiq.cloudbreak.reactor.api.event.ldap.LdapSSOConfigurationRequest;
 import com.sequenceiq.cloudbreak.reactor.api.event.ldap.LdapSSOConfigurationSuccess;
 import com.sequenceiq.cloudbreak.reactor.handler.ReactorEventHandler;
-import com.sequenceiq.cloudbreak.service.ClusterComponentConfigProvider;
-import com.sequenceiq.cloudbreak.service.cluster.ambari.AmbariLdapService;
-import com.sequenceiq.cloudbreak.service.cluster.ambari.AmbariRepositoryVersionService;
-import com.sequenceiq.cloudbreak.service.cluster.ambari.AmbariSSOService;
+import com.sequenceiq.cloudbreak.service.GatewayConfigService;
+import com.sequenceiq.cloudbreak.service.cluster.ClusterApiConnectors;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
 
 import reactor.bus.Event;
@@ -29,22 +27,16 @@ public class LdapSSOConfigurationHandler implements ReactorEventHandler<LdapSSOC
     private static final Logger LOGGER = LoggerFactory.getLogger(LdapSSOConfigurationHandler.class);
 
     @Inject
-    private AmbariLdapService ambariLdapService;
-
-    @Inject
-    private AmbariSSOService ambariSSOService;
-
-    @Inject
     private StackService stackService;
 
     @Inject
     private EventBus eventBus;
 
     @Inject
-    private ClusterComponentConfigProvider clusterComponentConfigProvider;
+    private ClusterApiConnectors clusterApiConnectors;
 
     @Inject
-    private AmbariRepositoryVersionService ambariRepositoryVersionService;
+    private GatewayConfigService gatewayConfigService;
 
     @Override
     public String selector() {
@@ -57,21 +49,10 @@ public class LdapSSOConfigurationHandler implements ReactorEventHandler<LdapSSOC
         Selectable response;
         try {
             Stack stack = stackService.getByIdWithListsInTransaction(stackId);
-            AmbariRepo ambariRepo = clusterComponentConfigProvider.getAmbariRepo(stack.getCluster().getId());
-            if (ambariRepo != null) {
-                if (ambariRepositoryVersionService.setupLdapAndSsoOnApi(ambariRepo)) {
-                    LOGGER.debug("Setup LDAP and SSO on API");
-                    ambariLdapService.setupLdap(stack, stack.getCluster(), ambariRepo);
-                    ambariLdapService.syncLdap(stack, stack.getCluster());
-                    ambariSSOService.setupSSO(stack, stack.getCluster());
-                } else {
-                    LOGGER.debug("Can not setup LDAP and SSO on API, Ambari too old");
-                }
-            } else {
-                LOGGER.debug("Can not setup LDAP and SSO on API, because Ambari repo is not found");
-            }
+            GatewayConfig primaryGatewayConfig = gatewayConfigService.getPrimaryGatewayConfig(stack);
+            clusterApiConnectors.getConnector(stack).clusterSecurityService().setupLdapAndSSO(primaryGatewayConfig.getPublicAddress());
             response = new LdapSSOConfigurationSuccess(stackId);
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             LOGGER.info("Error during LDAP configuration, stackId: " + stackId, e);
             response = new LdapSSOConfigurationFailed(stackId, e);
         }

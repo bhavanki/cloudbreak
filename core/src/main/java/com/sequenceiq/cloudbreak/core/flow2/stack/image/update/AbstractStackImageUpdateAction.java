@@ -18,24 +18,24 @@ import com.sequenceiq.cloudbreak.cloud.model.Location;
 import com.sequenceiq.cloudbreak.converter.spi.CredentialToCloudCredentialConverter;
 import com.sequenceiq.cloudbreak.converter.spi.ResourceToCloudResourceConverter;
 import com.sequenceiq.cloudbreak.converter.spi.StackToCloudStackConverter;
-import com.sequenceiq.cloudbreak.core.flow2.AbstractAction;
-import com.sequenceiq.cloudbreak.core.flow2.stack.FlowMessageService;
+import com.sequenceiq.cloudbreak.core.flow2.AbstractStackAction;
+import com.sequenceiq.cloudbreak.core.flow2.stack.CloudbreakFlowMessageService;
 import com.sequenceiq.cloudbreak.core.flow2.stack.StackContext;
 import com.sequenceiq.cloudbreak.core.flow2.stack.provision.action.StackCreationService;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.logger.MDCBuilder;
 import com.sequenceiq.cloudbreak.reactor.api.event.StackFailureEvent;
-import com.sequenceiq.cloudbreak.repository.ResourceRepository;
 import com.sequenceiq.cloudbreak.service.StackUpdater;
 import com.sequenceiq.cloudbreak.service.image.ImageService;
+import com.sequenceiq.cloudbreak.service.resource.ResourceService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
 
-abstract class AbstractStackImageUpdateAction<P extends Payload> extends AbstractAction<StackImageUpdateState, StackImageUpdateEvent, StackContext, P> {
+abstract class AbstractStackImageUpdateAction<P extends Payload> extends AbstractStackAction<StackImageUpdateState, StackImageUpdateEvent, StackContext, P> {
 
     public static final String ORIGINAL_IMAGE = "ORIGINAL_IMAGE";
 
     @Inject
-    private FlowMessageService flowMessageService;
+    private CloudbreakFlowMessageService flowMessageService;
 
     @Inject
     private StackImageUpdateService stackImageUpdateService;
@@ -59,7 +59,7 @@ abstract class AbstractStackImageUpdateAction<P extends Payload> extends Abstrac
     private StackUpdater stackUpdater;
 
     @Inject
-    private ResourceRepository resourceRepository;
+    private ResourceService resourceService;
 
     @Inject
     private ResourceToCloudResourceConverter resourceToCloudResourceConverter;
@@ -85,7 +85,7 @@ abstract class AbstractStackImageUpdateAction<P extends Payload> extends Abstrac
         return new StackFailureEvent(payload.getStackId(), ex);
     }
 
-    protected FlowMessageService getFlowMessageService() {
+    protected CloudbreakFlowMessageService getFlowMessageService() {
         return flowMessageService;
     }
 
@@ -113,8 +113,8 @@ abstract class AbstractStackImageUpdateAction<P extends Payload> extends Abstrac
         return stackUpdater;
     }
 
-    protected ResourceRepository getResourceRepository() {
-        return resourceRepository;
+    protected ResourceService getResourceService() {
+        return resourceService;
     }
 
     protected ResourceToCloudResourceConverter getResourceToCloudResourceConverter() {

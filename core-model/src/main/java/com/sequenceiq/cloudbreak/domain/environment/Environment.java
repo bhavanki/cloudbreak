@@ -16,13 +16,17 @@ import javax.persistence.JoinTable;
 import javax.persistence.ManyToMany;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
+import javax.persistence.OneToOne;
 import javax.persistence.SequenceGenerator;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 
+import org.hibernate.annotations.Where;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.sequenceiq.cloudbreak.authorization.WorkspaceResource;
+import com.sequenceiq.cloudbreak.domain.ArchivableResource;
 import com.sequenceiq.cloudbreak.domain.Credential;
 import com.sequenceiq.cloudbreak.domain.KerberosConfig;
 import com.sequenceiq.cloudbreak.domain.KubernetesConfig;
@@ -39,8 +43,9 @@ import com.sequenceiq.cloudbreak.domain.workspace.WorkspaceAwareResource;
 import com.sequenceiq.cloudbreak.util.JsonUtil;
 
 @Entity
+@Where(clause = "archived = false")
 @Table(uniqueConstraints = @UniqueConstraint(columnNames = {"workspace_id", "name"}))
-public class Environment implements WorkspaceAwareResource {
+public class Environment implements WorkspaceAwareResource, ArchivableResource {
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO, generator = "environment_generator")
@@ -80,37 +85,46 @@ public class Environment implements WorkspaceAwareResource {
     @Column(nullable = false)
     private Double latitude;
 
-    @ManyToMany(cascade = {CascadeType.MERGE}, fetch = FetchType.EAGER)
+    private boolean archived;
+
+    private Long deletionTimestamp = -1L;
+
+    @ManyToMany(cascade = CascadeType.MERGE, fetch = FetchType.EAGER)
     @JoinTable(name = "env_ldap", joinColumns = @JoinColumn(name = "envid"), inverseJoinColumns = @JoinColumn(name = "ldapid"))
     private Set<LdapConfig> ldapConfigs = new HashSet<>();
 
-    @ManyToMany(cascade = {CascadeType.MERGE}, fetch = FetchType.EAGER)
+    @ManyToMany(cascade = CascadeType.MERGE, fetch = FetchType.EAGER)
     @JoinTable(name = "env_proxy", joinColumns = @JoinColumn(name = "envid"), inverseJoinColumns = @JoinColumn(name = "proxyid"))
     private Set<ProxyConfig> proxyConfigs = new HashSet<>();
 
-    @ManyToMany(cascade = {CascadeType.MERGE}, fetch = FetchType.EAGER)
+    @ManyToMany(cascade = CascadeType.MERGE, fetch = FetchType.EAGER)
     @JoinTable(name = "env_rds", joinColumns = @JoinColumn(name = "envid"), inverseJoinColumns = @JoinColumn(name = "rdsid"))
     private Set<RDSConfig> rdsConfigs = new HashSet<>();
 
-    @ManyToMany(cascade = {CascadeType.MERGE}, fetch = FetchType.EAGER)
+    @ManyToMany(cascade = CascadeType.MERGE, fetch = FetchType.EAGER)
     @JoinTable(name = "env_kubernetes", joinColumns = @JoinColumn(name = "envid"), inverseJoinColumns = @JoinColumn(name = "kubernetesid"))
     private Set<KubernetesConfig> kubernetesConfigs = new HashSet<>();
 
-    @ManyToMany(cascade = {CascadeType.MERGE}, fetch = FetchType.EAGER)
+    @ManyToMany(cascade = CascadeType.MERGE, fetch = FetchType.EAGER)
     @JoinTable(name = "env_kdc", joinColumns = @JoinColumn(name = "envid"), inverseJoinColumns = @JoinColumn(name = "kdcid"))
     private Set<KerberosConfig> kerberosConfigs = new HashSet<>();
 
     @OneToMany(fetch = FetchType.EAGER)
     @JoinColumn(name = "environment_id")
+    @Where(clause = "terminated IS NULL")
     private Set<StackApiView> stacks = new HashSet<>();
 
     @OneToMany(fetch = FetchType.EAGER)
     @JoinColumn(name = "environment_id")
+    @Where(clause = "status != 'DELETE_COMPLETED'")
     private Set<ClusterApiView> clusters = new HashSet<>();
 
     @OneToMany(fetch = FetchType.EAGER)
     @JoinColumn(name = "environment_id")
     private Set<DatalakeResources> datalakeResources = new HashSet<>();
+
+    @OneToOne(mappedBy = "environment", cascade = CascadeType.REMOVE, orphanRemoval = true)
+    private BaseNetwork network;
 
     public Environment() {
         try {
@@ -136,6 +150,21 @@ public class Environment implements WorkspaceAwareResource {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    @Override
+    public void setArchived(boolean archived) {
+        this.archived = archived;
+    }
+
+    @Override
+    public void unsetRelationsToEntitiesToBeDeleted() {
+        ldapConfigs = null;
+        rdsConfigs = null;
+        proxyConfigs = null;
+        kubernetesConfigs = null;
+        kerberosConfigs = null;
+        datalakeResources = null;
     }
 
     public String getDescription() {
@@ -177,7 +206,7 @@ public class Environment implements WorkspaceAwareResource {
     }
 
     public Set<Region> getRegionSet() {
-        return JsonUtil.jsonToType(regions.getValue(), new TypeReference<Set<Region>>() {
+        return JsonUtil.jsonToType(regions.getValue(), new TypeReference<>() {
         });
     }
 
@@ -288,5 +317,25 @@ public class Environment implements WorkspaceAwareResource {
 
     public void setKerberosConfigs(Set<KerberosConfig> kerberosConfigs) {
         this.kerberosConfigs = kerberosConfigs;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public Long getDeletionTimestamp() {
+        return deletionTimestamp;
+    }
+
+    public void setDeletionTimestamp(Long deletionTimestamp) {
+        this.deletionTimestamp = deletionTimestamp;
+    }
+
+    public BaseNetwork getNetwork() {
+        return network;
+    }
+
+    public void setNetwork(BaseNetwork network) {
+        this.network = network;
     }
 }

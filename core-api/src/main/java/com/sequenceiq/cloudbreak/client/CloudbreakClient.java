@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory;
 import com.sequenceiq.cloudbreak.api.CoreApi;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.audits.AuditEventV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.autoscales.AutoscaleV4Endpoint;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.clusterdefinition.ClusterDefinitionV4Endpoint;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.blueprint.BlueprintV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.clustertemplate.ClusterTemplateV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.connector.ConnectorV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.credentials.CredentialV4Endpoint;
@@ -38,7 +38,6 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.database.DatabaseV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.EnvironmentV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.events.EventV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.filesystems.FileSystemV4Endpoint;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.flexsubscription.FlexSubscriptionV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.imagecatalog.ImageCatalogV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.kerberos.KerberosConfigV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.kubernetes.KubernetesV4Endpoint;
@@ -46,7 +45,6 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.ldaps.LdapConfigV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.mpacks.ManagementPackV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.proxies.ProxyV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.recipes.RecipeV4Endpoint;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.smartsense.SmartSenseSubscriptionV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.StackV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.user.UserV4Endpoint;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.userprofile.UserProfileV4Endpoint;
@@ -66,12 +64,11 @@ public class CloudbreakClient {
     private static final List<Class<?>> ENDPOINTS = Arrays.asList(
             AuditEventV4Endpoint.class,
             AutoscaleV4Endpoint.class,
-            ClusterDefinitionV4Endpoint.class,
+            BlueprintV4Endpoint.class,
             DatabaseV4Endpoint.class,
             EnvironmentV4Endpoint.class,
             EventV4Endpoint.class,
             ClusterTemplateV4Endpoint.class,
-            FlexSubscriptionV4Endpoint.class,
             CredentialV4Endpoint.class,
             ImageCatalogV4Endpoint.class,
             LdapConfigV4Endpoint.class,
@@ -81,7 +78,6 @@ public class CloudbreakClient {
             ConnectorV4Endpoint.class,
             ProxyV4Endpoint.class,
             RecipeV4Endpoint.class,
-            SmartSenseSubscriptionV4Endpoint.class,
             StackV4Endpoint.class,
             UserProfileV4Endpoint.class,
             UserV4Endpoint.class,
@@ -124,8 +120,8 @@ public class CloudbreakClient {
         return getEndpoint(AutoscaleV4Endpoint.class);
     }
 
-    public ClusterDefinitionV4Endpoint clusterDefinitionV4Endpoint() {
-        return getEndpoint(ClusterDefinitionV4Endpoint.class);
+    public BlueprintV4Endpoint blueprintV4Endpoint() {
+        return getEndpoint(BlueprintV4Endpoint.class);
     }
 
     public EnvironmentV4Endpoint environmentV4Endpoint() {
@@ -138,10 +134,6 @@ public class CloudbreakClient {
 
     public CredentialV4Endpoint credentialV4Endpoint() {
         return getEndpoint(CredentialV4Endpoint.class);
-    }
-
-    public FlexSubscriptionV4Endpoint flexSubscriptionV4Endpoint() {
-        return getEndpoint(FlexSubscriptionV4Endpoint.class);
     }
 
     public ImageCatalogV4Endpoint imageCatalogV4Endpoint() {
@@ -178,10 +170,6 @@ public class CloudbreakClient {
 
     public RecipeV4Endpoint recipeV4Endpoint() {
         return getEndpoint(RecipeV4Endpoint.class);
-    }
-
-    public SmartSenseSubscriptionV4Endpoint smartSenseSubscriptionV4Endpoint() {
-        return getEndpoint(SmartSenseSubscriptionV4Endpoint.class);
     }
 
     public UserProfileV4Endpoint userProfileV4Endpoint() {

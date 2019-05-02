@@ -44,16 +44,15 @@ import javax.persistence.UniqueConstraint;
 import javax.persistence.Version;
 
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.StackType;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.base.InstanceGroupType;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.base.InstanceMetadataType;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.base.OnFailureAction;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status;
 import com.sequenceiq.cloudbreak.authorization.WorkspaceResource;
 import com.sequenceiq.cloudbreak.common.type.CloudConstants;
 import com.sequenceiq.cloudbreak.common.type.ResourceType;
 import com.sequenceiq.cloudbreak.domain.Credential;
 import com.sequenceiq.cloudbreak.domain.FailurePolicy;
-import com.sequenceiq.cloudbreak.domain.FlexSubscription;
 import com.sequenceiq.cloudbreak.domain.Network;
 import com.sequenceiq.cloudbreak.domain.Orchestrator;
 import com.sequenceiq.cloudbreak.domain.ProvisionEntity;
@@ -165,9 +164,6 @@ public class Stack implements ProvisionEntity, WorkspaceAwareResource {
     @Convert(converter = JsonToString.class)
     @Column(columnDefinition = "TEXT")
     private Json inputs;
-
-    @ManyToOne
-    private FlexSubscription flexSubscription;
 
     private String uuid;
 
@@ -558,12 +554,6 @@ public class Stack implements ProvisionEntity, WorkspaceAwareResource {
                 if ("ephemeral".equals(instanceGroup.getTemplate().getVolumeType())) {
                     reason = StopRestrictionReason.EPHEMERAL_VOLUMES;
                     break;
-                } else {
-                    Json attributes = instanceGroup.getTemplate().getAttributes();
-                    if (attributes != null && attributes.getMap().get("spotPrice") != null) {
-                        reason = StopRestrictionReason.SPOT_INSTANCES;
-                        break;
-                    }
                 }
             }
         }
@@ -596,14 +586,6 @@ public class Stack implements ProvisionEntity, WorkspaceAwareResource {
 
     public void setTags(Json tags) {
         this.tags = tags;
-    }
-
-    public FlexSubscription getFlexSubscription() {
-        return flexSubscription;
-    }
-
-    public void setFlexSubscription(FlexSubscription flexSubscription) {
-        this.flexSubscription = flexSubscription;
     }
 
     public String getUuid() {

@@ -4,6 +4,7 @@ import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 
+import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Convert;
 import javax.persistence.Entity;
@@ -11,11 +12,15 @@ import javax.persistence.FetchType;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
+import javax.persistence.OneToOne;
 import javax.persistence.Table;
+
+import org.hibernate.annotations.Where;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.sequenceiq.cloudbreak.authorization.WorkspaceResource;
 import com.sequenceiq.cloudbreak.domain.Credential;
+import com.sequenceiq.cloudbreak.domain.environment.BaseNetwork;
 import com.sequenceiq.cloudbreak.domain.environment.Region;
 import com.sequenceiq.cloudbreak.domain.json.Json;
 import com.sequenceiq.cloudbreak.domain.json.JsonToString;
@@ -24,6 +29,7 @@ import com.sequenceiq.cloudbreak.util.JsonUtil;
 
 @Entity
 @Table(name = "Environment")
+@Where(clause = "archived = false")
 public class EnvironmentView extends CompactView {
 
     @Column(nullable = false)
@@ -49,8 +55,14 @@ public class EnvironmentView extends CompactView {
     @Column(nullable = false)
     private Double latitude;
 
+    @Column(columnDefinition = "boolean default false")
+    private boolean archived;
+
     @OneToMany(fetch = FetchType.EAGER, mappedBy = "environment")
     private Set<DatalakeResources> datalakeResources = new HashSet<>();
+
+    @OneToOne(mappedBy = "environment", cascade = CascadeType.REMOVE, orphanRemoval = true)
+    private BaseNetwork network;
 
     public Json getRegions() {
         return regions;
@@ -61,7 +73,8 @@ public class EnvironmentView extends CompactView {
     }
 
     public Set<Region> getRegionSet() {
-        return JsonUtil.jsonToType(regions.getValue(), new TypeReference<Set<Region>>() { });
+        return JsonUtil.jsonToType(regions.getValue(), new TypeReference<>() {
+        });
     }
 
     public String getCloudPlatform() {
@@ -110,6 +123,14 @@ public class EnvironmentView extends CompactView {
 
     public void setLatitude(Double latitude) {
         this.latitude = latitude;
+    }
+
+    public BaseNetwork getNetwork() {
+        return network;
+    }
+
+    public void setNetwork(BaseNetwork network) {
+        this.network = network;
     }
 
     @Override

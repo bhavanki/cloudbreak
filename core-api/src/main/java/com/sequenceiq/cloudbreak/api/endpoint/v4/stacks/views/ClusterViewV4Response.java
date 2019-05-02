@@ -4,24 +4,23 @@ import java.util.HashSet;
 import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.clusterdefinition.responses.AmbariViewV4Response;
+import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.blueprint.responses.BlueprintV4ViewResponse;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.CompactViewV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.cluster.sharedservice.SharedServiceV4Response;
+import com.sequenceiq.cloudbreak.doc.ModelDescriptions;
 import com.sequenceiq.cloudbreak.doc.ModelDescriptions.ClusterModelDescription;
 
 import io.swagger.annotations.ApiModelProperty;
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonInclude(Include.NON_NULL)
 public class ClusterViewV4Response extends CompactViewV4Response {
     @ApiModelProperty(ClusterModelDescription.STATUS)
     private Status status;
 
     @ApiModelProperty(ClusterModelDescription.SECURE)
     private boolean secure;
-
-    @ApiModelProperty
-    private AmbariViewV4Response ambari;
 
     @ApiModelProperty(ClusterModelDescription.HOSTGROUPS)
     private Set<HostGroupViewV4Response> hostGroups = new HashSet<>();
@@ -31,6 +30,12 @@ public class ClusterViewV4Response extends CompactViewV4Response {
 
     @ApiModelProperty(ClusterModelDescription.KERBEROSCONFIG_NAME)
     private String kerberosName;
+
+    @ApiModelProperty(ClusterModelDescription.BLUEPRINT)
+    private BlueprintV4ViewResponse blueprint;
+
+    @ApiModelProperty(ModelDescriptions.StackModelDescription.SERVER_IP)
+    private String serverIp;
 
     public Status getStatus() {
         return status;
@@ -72,11 +77,19 @@ public class ClusterViewV4Response extends CompactViewV4Response {
         this.kerberosName = kerberosName;
     }
 
-    public AmbariViewV4Response getAmbari() {
-        return ambari;
+    public BlueprintV4ViewResponse getBlueprint() {
+        return blueprint;
     }
 
-    public void setAmbari(AmbariViewV4Response ambari) {
-        this.ambari = ambari;
+    public void setBlueprint(BlueprintV4ViewResponse blueprint) {
+        this.blueprint = blueprint;
+    }
+
+    public String getServerIp() {
+        return serverIp;
+    }
+
+    public void setServerIp(String serverIp) {
+        this.serverIp = serverIp;
     }
 }

@@ -6,12 +6,18 @@ import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonInclude.Include;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.JsonEntity;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.blueprint.responses.BlueprintV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.common.responses.SecretV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.database.responses.DatabaseV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.kerberos.responses.KerberosV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.ldaps.responses.LdapV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.proxies.responses.ProxyV4Response;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.cluster.clouderamanager.ClouderaManagerV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.cluster.ambari.AmbariV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.cluster.customcontainer.CustomContainerV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.cluster.gateway.GatewayV4Response;
@@ -19,11 +25,15 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.cluster.gateway
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.cluster.storage.CloudStorageV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.workspace.responses.WorkspaceResourceV4Response;
 import com.sequenceiq.cloudbreak.doc.ModelDescriptions;
+import com.sequenceiq.cloudbreak.doc.ModelDescriptions.BlueprintModelDescription;
 import com.sequenceiq.cloudbreak.doc.ModelDescriptions.ClusterModelDescription;
+import com.sequenceiq.cloudbreak.doc.ModelDescriptions.StackModelDescription;
+import com.sequenceiq.cloudbreak.structuredevent.json.Base64Deserializer;
+import com.sequenceiq.cloudbreak.structuredevent.json.Base64Serializer;
 
 import io.swagger.annotations.ApiModelProperty;
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonInclude(Include.NON_NULL)
 public class ClusterV4Response implements JsonEntity {
 
     @ApiModelProperty(ModelDescriptions.ID)
@@ -61,6 +71,8 @@ public class ClusterV4Response implements JsonEntity {
 
     private AmbariV4Response ambari;
 
+    private ClouderaManagerV4Response cm;
+
     private GatewayV4Response gateway;
 
     @ApiModelProperty(ClusterModelDescription.CLUSTER_ATTRIBUTES)
@@ -86,6 +98,26 @@ public class ClusterV4Response implements JsonEntity {
 
     @ApiModelProperty(ModelDescriptions.WORKSPACE_OF_THE_RESOURCE)
     private WorkspaceResourceV4Response workspace;
+
+    @ApiModelProperty(StackModelDescription.DP_AMBARI_USERNAME)
+    private SecretV4Response dpUser;
+
+    @ApiModelProperty(StackModelDescription.DP_AMBARI_PASSWORD)
+    private SecretV4Response dpPassword;
+
+    @ApiModelProperty(ClusterModelDescription.BLUEPRINT)
+    private BlueprintV4Response blueprint;
+
+    @ApiModelProperty(BlueprintModelDescription.BLUEPRINT)
+    @JsonSerialize(using = Base64Serializer.class)
+    @JsonDeserialize(using = Base64Deserializer.class)
+    private String extendedBlueprintText;
+
+    @ApiModelProperty(StackModelDescription.SERVER_IP)
+    private String serverIp;
+
+    @ApiModelProperty(StackModelDescription.SERVER_URL)
+    private String serverUrl;
 
     public Long getId() {
         return id;
@@ -167,6 +199,14 @@ public class ClusterV4Response implements JsonEntity {
         this.ambari = ambari;
     }
 
+    public ClouderaManagerV4Response getCm() {
+        return cm;
+    }
+
+    public void setCm(ClouderaManagerV4Response cm) {
+        this.cm = cm;
+    }
+
     public GatewayV4Response getGateway() {
         return gateway;
     }
@@ -205,6 +245,22 @@ public class ClusterV4Response implements JsonEntity {
 
     public void setUptime(Long uptime) {
         this.uptime = uptime;
+    }
+
+    public SecretV4Response getDpUser() {
+        return dpUser;
+    }
+
+    public void setDpUser(SecretV4Response dpUser) {
+        this.dpUser = dpUser;
+    }
+
+    public SecretV4Response getDpPassword() {
+        return dpPassword;
+    }
+
+    public void setDpPassword(SecretV4Response dpPassword) {
+        this.dpPassword = dpPassword;
     }
 
     public WorkspaceResourceV4Response getWorkspace() {
@@ -253,5 +309,37 @@ public class ClusterV4Response implements JsonEntity {
 
     public void setExposedServices(Map<String, Collection<ClusterExposedServiceV4Response>> exposedServices) {
         this.exposedServices = exposedServices;
+    }
+
+    public BlueprintV4Response getBlueprint() {
+        return blueprint;
+    }
+
+    public void setBlueprint(BlueprintV4Response blueprint) {
+        this.blueprint = blueprint;
+    }
+
+    public String getExtendedBlueprintText() {
+        return extendedBlueprintText;
+    }
+
+    public void setExtendedBlueprintText(String extendedBlueprintText) {
+        this.extendedBlueprintText = extendedBlueprintText;
+    }
+
+    public String getServerIp() {
+        return serverIp;
+    }
+
+    public void setServerIp(String serverIp) {
+        this.serverIp = serverIp;
+    }
+
+    public String getServerUrl() {
+        return serverUrl;
+    }
+
+    public void setServerUrl(String serverUrl) {
+        this.serverUrl = serverUrl;
     }
 }

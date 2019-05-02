@@ -9,7 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ambari.RepositoryV4Request;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.repository.RepositoryV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ambari.stackrepository.StackRepositoryV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ambari.stackrepository.mpack.ManagementPackDetailsV4Request;
 import com.sequenceiq.cloudbreak.api.util.ConverterUtil;
@@ -61,7 +61,7 @@ public class StackRepoDetailsToStackRepositoryV4RequestConverter
         stackRepositoryV4Request.setVersion(source.getMajorHdpVersion());
         if (!source.getMpacks().isEmpty()) {
             stackRepositoryV4Request.setMpacks(converterUtil.convertAll(source.getMpacks(), ManagementPackDetailsV4Request.class));
-            Optional<ManagementPackComponent> stackDefaultMpack = source.getMpacks().stream().filter(mp -> mp.isStackDefault()).findFirst();
+            Optional<ManagementPackComponent> stackDefaultMpack = source.getMpacks().stream().filter(ManagementPackComponent::isStackDefault).findFirst();
             stackDefaultMpack.ifPresent(mp -> stackRepositoryV4Request.setMpackUrl(mp.getMpackUrl()));
         }
         return stackRepositoryV4Request;

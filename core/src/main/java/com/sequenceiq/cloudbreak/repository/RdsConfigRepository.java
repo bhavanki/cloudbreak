@@ -1,6 +1,6 @@
 package com.sequenceiq.cloudbreak.repository;
 
-import static com.sequenceiq.cloudbreak.authorization.WorkspacePermissions.Action.READ;
+import static com.sequenceiq.cloudbreak.authorization.ResourceAction.READ;
 
 import java.util.Collection;
 import java.util.Optional;
@@ -27,7 +27,7 @@ import com.sequenceiq.cloudbreak.service.EntityType;
 @EntityType(entityClass = RDSConfig.class)
 @Transactional(TxType.REQUIRED)
 @DisableHasPermission
-@WorkspaceResourceType(resource = WorkspaceResource.RDS)
+@WorkspaceResourceType(resource = WorkspaceResource.DATABASE)
 public interface RdsConfigRepository extends EnvironmentResourceRepository<RDSConfig, Long> {
 
     @Override
@@ -48,13 +48,19 @@ public interface RdsConfigRepository extends EnvironmentResourceRepository<RDSCo
     @CheckPermissionsByWorkspaceId(action = READ, workspaceIdIndex = 1)
     @Query("SELECT r FROM RDSConfig r LEFT JOIN FETCH r.clusters WHERE r.name= :name AND r.status = 'USER_MANAGED'"
             + "AND r.workspace.id = :workspaceId")
-    RDSConfig findByNameAndWorkspaceId(@Param("name") String name, @Param("workspaceId") Long workspaceId);
+    Optional<RDSConfig> findByNameAndWorkspaceId(@Param("name") String name, @Param("workspaceId") Long workspaceId);
+
+    @Override
+    @CheckPermissionsByWorkspaceId(action = READ, workspaceIdIndex = 1)
+    @Query("SELECT r FROM RDSConfig r LEFT JOIN FETCH r.clusters WHERE r.name in :names AND r.status = 'USER_MANAGED'"
+            + "AND r.workspace.id = :workspaceId")
+    Set<RDSConfig> findByNameInAndWorkspaceId(@Param("names") Set<String> name, @Param("workspaceId") Long workspaceId);
 
     @Override
     @CheckPermissionsByWorkspace(action = READ, workspaceIndex = 1)
     @Query("SELECT r FROM RDSConfig r LEFT JOIN FETCH r.clusters WHERE r.name= :name AND r.status = 'USER_MANAGED'"
             + "AND r.workspace = :org")
-    RDSConfig findByNameAndWorkspace(@Param("name") String name, @Param("org") Workspace org);
+    Optional<RDSConfig> findByNameAndWorkspace(@Param("name") String name, @Param("org") Workspace org);
 
     @CheckPermissionsByReturnValue(action = READ)
     @Query("SELECT r FROM RDSConfig r LEFT JOIN FETCH r.clusters WHERE r.id= :id AND r.status <> 'DEFAULT_DELETED'")
@@ -75,19 +81,19 @@ public interface RdsConfigRepository extends EnvironmentResourceRepository<RDSCo
     RDSConfig findByClusterIdAndType(@Param("clusterId") Long clusterId, @Param("type") String type);
 
     @Override
-    @CheckPermissionsByWorkspaceId(action = READ, workspaceIdIndex = 0)
+    @CheckPermissionsByWorkspaceId(action = READ)
     @Query("SELECT r FROM RDSConfig r LEFT JOIN FETCH r.clusters LEFT JOIN FETCH r.environments e WHERE "
             + "r.workspace.id = :workspaceId AND :environment in e AND r.status = 'USER_MANAGED'")
     Set<RDSConfig> findAllByWorkspaceIdAndEnvironments(@Param("workspaceId") Long workspaceId, @Param("environment") EnvironmentView environment);
 
     @Override
-    @CheckPermissionsByWorkspaceId(action = READ, workspaceIdIndex = 0)
+    @CheckPermissionsByWorkspaceId(action = READ)
     @Query("SELECT r FROM RDSConfig r LEFT JOIN FETCH r.clusters LEFT JOIN FETCH r.environments e WHERE "
             + "r.workspace.id = :workspaceId AND e IS NULL AND r.status = 'USER_MANAGED'")
     Set<RDSConfig> findAllByWorkspaceIdAndEnvironmentsIsNull(@Param("workspaceId") Long workspaceId);
 
     @Override
-    @CheckPermissionsByWorkspaceId(action = READ, workspaceIdIndex = 0)
+    @CheckPermissionsByWorkspaceId(action = READ)
     @Query("SELECT r FROM RDSConfig r LEFT JOIN FETCH r.clusters LEFT JOIN FETCH r.environments e WHERE "
             + "r.workspace.id = :workspaceId AND e IS NOT NULL AND r.status = 'USER_MANAGED'")
     Set<RDSConfig> findAllByWorkspaceIdAndEnvironmentsIsNotNull(@Param("workspaceId") Long workspaceId);

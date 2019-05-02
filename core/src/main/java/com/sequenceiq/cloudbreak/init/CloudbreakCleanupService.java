@@ -18,6 +18,7 @@ import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationListener;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -28,22 +29,20 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.base.InstanceStatus;
 import com.sequenceiq.cloudbreak.controller.exception.FlowsAlreadyRunningException;
 import com.sequenceiq.cloudbreak.core.flow2.Flow2Handler;
+import com.sequenceiq.cloudbreak.core.flow2.FlowLogService;
 import com.sequenceiq.cloudbreak.core.flow2.service.ReactorFlowManager;
 import com.sequenceiq.cloudbreak.domain.FlowLog;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceMetaData;
 import com.sequenceiq.cloudbreak.ha.CloudbreakNodeConfig;
-import com.sequenceiq.cloudbreak.repository.FlowLogRepository;
-import com.sequenceiq.cloudbreak.repository.InstanceMetaDataRepository;
 import com.sequenceiq.cloudbreak.service.StackUpdater;
 import com.sequenceiq.cloudbreak.service.TransactionService;
 import com.sequenceiq.cloudbreak.service.TransactionService.TransactionExecutionException;
-import com.sequenceiq.cloudbreak.service.clusterdefinition.AmbariBlueprintMigrationService;
 import com.sequenceiq.cloudbreak.service.cluster.ClusterService;
-import com.sequenceiq.cloudbreak.service.events.CloudbreakEventService;
-import com.sequenceiq.cloudbreak.service.flowlog.FlowLogService;
+import com.sequenceiq.cloudbreak.service.event.CloudbreakEventService;
 import com.sequenceiq.cloudbreak.service.ha.HeartbeatService;
+import com.sequenceiq.cloudbreak.service.stack.InstanceMetaDataService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
 import com.sequenceiq.cloudbreak.startup.GovCloudFlagMigrator;
 
@@ -65,13 +64,10 @@ public class CloudbreakCleanupService implements ApplicationListener<ContextRefr
     private ClusterService clusterService;
 
     @Inject
-    private InstanceMetaDataRepository instanceMetaDataRepository;
+    private InstanceMetaDataService instanceMetaDataService;
 
     @Inject
     private CloudbreakEventService eventService;
-
-    @Inject
-    private FlowLogRepository flowLogRepository;
 
     @Inject
     private FlowLogService flowLogService;
@@ -91,8 +87,7 @@ public class CloudbreakCleanupService implements ApplicationListener<ContextRefr
     @Inject
     private GovCloudFlagMigrator govCloudFlagMigrator;
 
-    @Inject
-    private AmbariBlueprintMigrationService ambariBlueprintMigrationService;
+    private final List<Status> syncRequiredStates = Arrays.asList(UPDATE_REQUESTED, UPDATE_IN_PROGRESS, WAIT_FOR_SYNC, START_IN_PROGRESS, STOP_IN_PROGRESS);
 
     @Override
     public void onApplicationEvent(ContextRefreshedEvent event) {
@@ -105,22 +100,23 @@ public class CloudbreakCleanupService implements ApplicationListener<ContextRefr
             List<Cluster> clustersToSync = resetClusterStatus(stacksToSync, stackIdsUnderOperation);
             triggerSyncs(stacksToSync, clustersToSync);
             flowLogService.purgeTerminatedStacksFlowLogs();
-        } catch (TransactionExecutionException e) {
-            LOGGER.info("Unable to start node properly", e);
+            govCloudFlagMigrator.run();
+        } catch (Exception e) {
+            LOGGER.error("Clean up or the migration operations failed. Shutting down the node. ", e);
+            ConfigurableApplicationContext applicationContext = (ConfigurableApplicationContext) event.getApplicationContext();
+            applicationContext.close();
         }
-        ambariBlueprintMigrationService.migrateBlueprints();
-        govCloudFlagMigrator.run();
     }
 
     private List<Stack> resetStackStatus(Collection<Long> excludeStackIds) {
-        return stackService.getByStatuses(Arrays.asList(UPDATE_REQUESTED, UPDATE_IN_PROGRESS, WAIT_FOR_SYNC, START_IN_PROGRESS, STOP_IN_PROGRESS))
-                .stream().filter(s -> !excludeStackIds.contains(s.getId()) || WAIT_FOR_SYNC.equals(s.getStatus()))
+        return stackService.getByStatuses(syncRequiredStates).stream()
+                .filter(s -> !excludeStackIds.contains(s.getId()) || Status.WAIT_FOR_SYNC.equals(s.getStatus()))
                 .peek(s -> {
-                    if (!WAIT_FOR_SYNC.equals(s.getStatus())) {
-                        loggingStatusChange("Stack", s.getId(), s.getStatus(), WAIT_FOR_SYNC);
+                    if (!Status.WAIT_FOR_SYNC.equals(s.getStatus())) {
+                        loggingStatusChange("Stack", s.getId(), s.getStatus(), Status.WAIT_FOR_SYNC);
                         stackUpdater.updateStackStatus(s.getId(), DetailedStackStatus.WAIT_FOR_SYNC, s.getStatusReason());
                     }
-                    cleanInstanceMetaData(instanceMetaDataRepository.findAllInStack(s.getId()));
+                    cleanInstanceMetaData(instanceMetaDataService.findAllInStack(s.getId()));
                 }).collect(Collectors.toList());
     }
 
@@ -128,18 +124,20 @@ public class CloudbreakCleanupService implements ApplicationListener<ContextRefr
         for (InstanceMetaData metadata : metadataSet) {
             if (InstanceStatus.REQUESTED.equals(metadata.getInstanceStatus()) && metadata.getInstanceId() == null) {
                 LOGGER.debug("InstanceMetaData [privateId: '{}'] is deleted at CB start.", metadata.getPrivateId());
-                instanceMetaDataRepository.delete(metadata);
+                instanceMetaDataService.delete(metadata);
             }
         }
     }
 
     private List<Cluster> resetClusterStatus(Collection<Stack> stacksToSync, Collection<Long> excludeStackIds) {
-        return clusterService.findByStatuses(Arrays.asList(UPDATE_REQUESTED, UPDATE_IN_PROGRESS, WAIT_FOR_SYNC, START_IN_PROGRESS, STOP_IN_PROGRESS))
-                .stream().filter(c -> !excludeStackIds.contains(c.getStack().getId()))
+        return clusterService.findByStatuses(syncRequiredStates).stream()
+                .filter(c -> !excludeStackIds.contains(c.getStack().getId()))
                 .peek(c -> {
-                    loggingStatusChange("Cluster", c.getId(), c.getStatus(), WAIT_FOR_SYNC);
-                    c.setStatus(WAIT_FOR_SYNC);
-                    clusterService.save(c);
+                    if (!Status.WAIT_FOR_SYNC.equals(c.getStatus())) {
+                        loggingStatusChange("Cluster", c.getId(), c.getStatus(), Status.WAIT_FOR_SYNC);
+                        c.setStatus(Status.WAIT_FOR_SYNC);
+                        clusterService.save(c);
+                    }
                 }).filter(c -> !isStackToSyncContainsCluster(stacksToSync, c)).collect(Collectors.toList());
     }
 
@@ -153,7 +151,7 @@ public class CloudbreakCleanupService implements ApplicationListener<ContextRefr
      */
     private Collection<Long> excludeStacksByFlowAssignment() {
         List<Long> exclusion = new ArrayList<>();
-        List<Object[]> allPending = flowLogRepository.findAllPending();
+        List<Object[]> allPending = flowLogService.findAllPending();
         allPending.stream().filter(o -> o[2] != null).forEach(o -> exclusion.add((Long) o[1]));
         return exclusion;
     }
@@ -164,7 +162,7 @@ public class CloudbreakCleanupService implements ApplicationListener<ContextRefr
      */
     private List<Long> restartOrUpdateUnassignedDisruptedFlows() throws TransactionExecutionException {
         List<Long> stackIds = new ArrayList<>();
-        Set<FlowLog> unassignedFlowLogs = flowLogRepository.findAllUnassigned();
+        Set<FlowLog> unassignedFlowLogs = flowLogService.findAllUnassigned();
         if (!unassignedFlowLogs.isEmpty()) {
             if (cloudbreakNodeConfig.isNodeIdSpecified()) {
                 try {
@@ -195,7 +193,7 @@ public class CloudbreakCleanupService implements ApplicationListener<ContextRefr
                 flowLog.setCloudbreakNodeId(nodeId);
             }
             transactionService.required(() -> {
-                flowLogRepository.saveAll(flowLogs);
+                flowLogService.saveAll(flowLogs);
                 return null;
             });
         }
@@ -234,9 +232,9 @@ public class CloudbreakCleanupService implements ApplicationListener<ContextRefr
      * Retrieves my assigned flow logs and updates the version lock to avoid concurrency issues.
      */
     private Set<FlowLog> getMyFlowLogs() throws TransactionExecutionException {
-        Set<FlowLog> myFlowLogs = flowLogRepository.findAllByCloudbreakNodeId(cloudbreakNodeConfig.getId());
+        Set<FlowLog> myFlowLogs = flowLogService.findAllByCloudbreakNodeId(cloudbreakNodeConfig.getId());
         myFlowLogs.forEach(fl -> fl.setCreated(fl.getCreated() + 1));
-        transactionService.required(() -> flowLogRepository.saveAll(myFlowLogs));
+        transactionService.required(() -> flowLogService.saveAll(myFlowLogs));
         return myFlowLogs;
     }
 
@@ -264,7 +262,7 @@ public class CloudbreakCleanupService implements ApplicationListener<ContextRefr
     }
 
     private void fireEvent(Stack stack) {
-        eventService.fireCloudbreakEvent(stack.getId(), UPDATE_IN_PROGRESS.name(),
+        eventService.fireCloudbreakEvent(stack.getId(), Status.UPDATE_IN_PROGRESS.name(),
                 "Couldn't retrieve the cluster's status, starting to sync.");
     }
 }

@@ -1,13 +1,14 @@
 package com.sequenceiq.cloudbreak.repository;
 
 import static com.sequenceiq.cloudbreak.aspect.ConditionType.PRE;
-import static com.sequenceiq.cloudbreak.authorization.WorkspacePermissions.Action.READ;
-import static com.sequenceiq.cloudbreak.authorization.WorkspacePermissions.Action.WRITE;
+import static com.sequenceiq.cloudbreak.authorization.ResourceAction.READ;
+import static com.sequenceiq.cloudbreak.authorization.ResourceAction.WRITE;
 
 import java.io.Serializable;
 import java.util.Optional;
 
 import javax.transaction.Transactional;
+import javax.transaction.Transactional.TxType;
 
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.NoRepositoryBean;
@@ -20,7 +21,7 @@ import com.sequenceiq.cloudbreak.aspect.workspace.CheckPermissionsByTarget;
 import com.sequenceiq.cloudbreak.aspect.workspace.CheckPermissionsByTargetId;
 
 @NoRepositoryBean
-@Transactional(Transactional.TxType.REQUIRED)
+@Transactional(TxType.REQUIRED)
 public interface BaseRepository<T, ID extends Serializable> extends CrudRepository<T, ID> {
 
     @Override

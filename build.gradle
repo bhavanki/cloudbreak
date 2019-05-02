@@ -18,7 +18,7 @@ buildscript {
 
 plugins {
   id 'org.ajoberstar.grgit' version '2.1.0'
-  id "com.github.spotbugs" version "1.6.2"
+  id "com.github.spotbugs" version "1.6.10"
 }
 
 if (project.hasProperty("reckon.scope")) {
@@ -28,6 +28,9 @@ if (project.hasProperty("reckon.scope")) {
     stageFromProp('dev', 'rc', 'final')
   }
 }
+
+def cmPrivateRepoUser = System.getenv("CM_PRIVATE_REPO_USER") ?: "$defaultCmPrivateRepoUser"
+def cmPrivateRepoPassword = System.getenv("CM_PRIVATE_REPO_PASSWORD") ?: "$defaultCmPrivateRepoPassword"
 
 def env = project.hasProperty('env') ? project.getProperty('env') : 'local'
 ext.config = new ConfigSlurper(env).parse(file("$rootDir/gradle/config/buildConfig.groovy").toURL())
@@ -58,8 +61,8 @@ subprojects {
   apply plugin: 'jacoco'
 
 
-  sourceCompatibility = 10
-  targetCompatibility = 10
+  sourceCompatibility = 11
+  targetCompatibility = 11
 
   configurations {
     deployerJars
@@ -83,13 +86,13 @@ subprojects {
   }
 
   spotbugs {
-    toolVersion = "3.1.7"
+    toolVersion = "3.1.11"
     excludeFilter = file("$rootProject.projectDir/config/spotbugs/excludeFilter.xml")
     effort = "min"
   }
 
   jacoco {
-    toolVersion = "0.8.2"
+    toolVersion = "0.8.3"
     reportsDir = file("$buildDir/reports/jacoco")
   }
 
@@ -104,7 +107,10 @@ subprojects {
               fileTree(
                       dir: it,
                       exclude: [
-                              '**/converter/mapper/**'
+                              '**/converter/mapper/**',
+                              '**/sequenceiq/it/**',
+                              '**/cloudbreak/api/endpoint/**',
+                              '**/cloudbreak/domain/**'
                       ]
               )
           })
@@ -163,6 +169,15 @@ subprojects {
     maven { url "https://cloudbreak-maven.s3.amazonaws.com/releases" }
     maven { url "https://repo.spring.io/release" }
     maven { url "https://plugins.gradle.org/m2/" }
-    maven { url "https://repository.cloudera.com/artifactory/cloudera-repos" }
+    maven {
+      authentication {
+        basic(BasicAuthentication)
+      }
+      credentials(PasswordCredentials) {
+        username "$cmPrivateRepoUser"
+        password "$cmPrivateRepoPassword"
+      }
+      url "https://repository.cloudera.com/cloudera/list/cm-private/"
+    }
   }
 }

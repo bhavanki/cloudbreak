@@ -20,11 +20,10 @@ import com.google.common.collect.Lists;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.DatabaseVendor;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.ResourceStatus;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.database.base.DatabaseType;
-import com.sequenceiq.cloudbreak.domain.ClusterDefinition;
+import com.sequenceiq.cloudbreak.domain.Blueprint;
 import com.sequenceiq.cloudbreak.domain.RDSConfig;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
-import com.sequenceiq.cloudbreak.repository.RdsConfigRepository;
 import com.sequenceiq.cloudbreak.service.cluster.ClusterService;
 import com.sequenceiq.cloudbreak.util.PasswordUtil;
 
@@ -33,16 +32,13 @@ public abstract class AbstractRdsConfigProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRdsConfigProvider.class);
 
     @Inject
-    private RdsConfigRepository rdsConfigRepository;
-
-    @Inject
     private RdsConfigService rdsConfigService;
 
     @Inject
     private ClusterService clusterService;
 
     public Map<String, Object> createServicePillarConfigMapIfNeeded(Stack stack, Cluster cluster) {
-        if (isRdsConfigNeeded(cluster.getClusterDefinition())) {
+        if (isRdsConfigNeeded(cluster.getBlueprint())) {
             Set<RDSConfig> rdsConfigs = createPostgresRdsConfigIfNeeded(stack, cluster);
             RDSConfig rdsConfig = rdsConfigs.stream().filter(rdsConfig1 -> rdsConfig1.getType().equalsIgnoreCase(getRdsType().name())).findFirst().get();
             if (rdsConfig.getStatus() == ResourceStatus.DEFAULT && rdsConfig.getDatabaseEngine() != DatabaseVendor.EMBEDDED) {
@@ -59,9 +55,9 @@ public abstract class AbstractRdsConfigProvider {
     }
 
     public Set<RDSConfig> createPostgresRdsConfigIfNeeded(Stack stack, Cluster cluster) {
-        Set<RDSConfig> rdsConfigs = rdsConfigRepository.findByClusterId(cluster.getId());
+        Set<RDSConfig> rdsConfigs = rdsConfigService.findByClusterId(cluster.getId());
         rdsConfigs = rdsConfigs.stream().map(c -> rdsConfigService.resolveVaultValues(c)).collect(Collectors.toSet());
-        if (isRdsConfigNeeded(cluster.getClusterDefinition())
+        if (isRdsConfigNeeded(cluster.getBlueprint())
                 && rdsConfigs.stream().noneMatch(rdsConfig -> rdsConfig.getType().equalsIgnoreCase(getRdsType().name()))) {
             LOGGER.debug("Creating postgres Database for {}", getRdsType().name());
             rdsConfigs = createPostgresRdsConf(stack, cluster, rdsConfigs, getDbUser(), getDbPort(), getDb());
@@ -94,7 +90,7 @@ public abstract class AbstractRdsConfigProvider {
         return rdsConfigs;
     }
 
-    protected List<String[]> createPathListFromConfingurations(String[] path, String[] configurations) {
+    protected List<String[]> createPathListFromConfigurations(String[] path, String[] configurations) {
         List<String[]> pathList = new ArrayList<>();
         Arrays.stream(configurations).forEach(configuration -> {
             List<String> pathWithConfig = Lists.newArrayList(path);
@@ -114,6 +110,6 @@ public abstract class AbstractRdsConfigProvider {
 
     protected abstract DatabaseType getRdsType();
 
-    protected abstract boolean isRdsConfigNeeded(ClusterDefinition clusterDefinition);
+    protected abstract boolean isRdsConfigNeeded(Blueprint blueprint);
 
 }

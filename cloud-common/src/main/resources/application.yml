@@ -16,6 +16,12 @@ management:
           enabled: true
     prometheus:
       enabled: true
+  metrics:
+    distribution:
+      sla:
+        "[http.server.requests]": "125ms, 250ms, 500ms, 1s, 2s"
+      percentiles:
+        "[http.server.requests]": "0.5, 0.95"
 
 info:
   app:
@@ -50,6 +56,11 @@ vault:
       service.account.token.path: /var/run/secrets/kubernetes.io/serviceaccount/token
       mount.path: "dps-dev"
       login.role: "cloudbreak.default"
+
+flow:
+  schema:
+    migration:
+      auto: false
 
 cb:
   uaa.startup.timeout.sec: 300
@@ -119,29 +130,18 @@ cb:
     defaultQueue: "default"
     defaultLifeTime: -1
 
-  clusterdefinition:
-    ambari:
+  blueprint:
+    cm:
       defaults: >
-                EDW-ETL: Apache Hive, Apache Spark 2=hdp26-etl-edw-spark2;
-                EDW-Analytics: Apache Hive 2 LLAP, Apache Zeppelin=hdp26-edw-analytics;
-                Data Science: Apache Spark 2, Apache Zeppelin=hdp26-data-science-spark2;
-                Flow Management: Apache NiFi, Apache NiFi Registry=hdf33-flow-management;
-                HDF-3.3 Messaging Management: Apache Kafka=hdf33-messaging-kafka;
-                Messaging Management: Apache Kafka, Schema Registry=hdf33-messaging-kafka-registry;
-                Data Lake: Apache Ranger, Apache Atlas, Apache Hive Metastore=hdp26-shared-services;
-                Data Lake: Apache Ranger, Apache Hive Metastore HA=hdp26-shared-services-ha;
-                HDP 3.1 - Data Science: Apache Spark 2, Apache Zeppelin=hdp31-data-science-spark2;
-                HDP 3.1 - EDW-Analytics: Apache Hive 2 LLAP, Apache Zeppelin=hdp31-edw-analytics;
-                HDP 3.1 - Data Lake: Apache Ranger, Apache Hive Metastore=hdp31-shared-services
-      internal: >
-                HDP 3.0 - Data Science: Apache Spark 2, Apache Zeppelin=hdp30-data-science-spark2;
-                HDP 3.0 - EDW-Analytics: Apache Hive 2 LLAP, Apache Zeppelin=hdp30-edw-analytics;
-                HDP 3.0 - Data Lake: Apache Ranger, Apache Hive Metastore=hdp30-shared-services;
-                HDP 3.0 - Data Lake: Apache Ranger, Apache Atlas, Infrastructure Services=hdp30-shared-services-v2;
-                HDP 3.0 - Data Science Attached: Apache Spark 2, Apache Zeppelin=hdp30-data-science-spark2-attached-v2;
-                HDP 3.0 - Data Science Standalone: Apache Spark 2, Apache Zeppelin=hdp30-data-science-spark2-standalone-v2;
-                HDP 3.0 - EDW-Analytics Attached: Apache Hive 3 LLAP=hdp30-edw-analytics-attached-v2;
-                HDP 3.0 - EDW-Analytics Standalone: Apache Hive 3 LLAP=hdp30-edw-analytics-standalone-v2
+                CDH 6.2 - Data Science: Apache Spark, Apache Hive, Impala=cdh6-data-science;
+                CDH 6.2 - Data Lake: Hive Metastore=cdh6-shared-services;
+                CDP 1.0 - Data Science: Apache Spark, Apache Hive, Impala=cdp-data-science;
+                CDP 1.0 - SDX: Hive Metastore=cdp-shared-services
+
+    ambari:
+      defaults:
+      internal:
+
   clustertemplate.defaults:
   template.defaults: minviable-gcp,minviable-azure-managed-disks,minviable-aws
   custom.user.data: |
@@ -223,11 +223,23 @@ cb:
   clouderamanager:
     entries:
       6.1:
-        version: 6.1.0
+        version: 6.1.1
         repo:
           redhat7:
-            baseurl: https://archive.cloudera.com/cm6/6.1.0/redhat7/yum/
-            gpgkey: https://archive.cloudera.com/cm6/6.1.0/redhat7/yum/RPM-GPG-KEY-cloudera
+            baseurl: https://archive.cloudera.com/cm6/6.1.1/redhat7/yum/
+            gpgkey: https://archive.cloudera.com/cm6/6.1.1/redhat7/yum/RPM-GPG-KEY-cloudera
+      6.2:
+        version: 6.2.0
+        repo:
+          redhat7:
+            baseurl: https://archive.cloudera.com/cm6/6.2.0/redhat7/yum/
+            gpgkey: https://archive.cloudera.com/cm6/6.2.0/redhat7/yum/RPM-GPG-KEY-cloudera
+      7.0:
+        version: 7.x.0
+        repo:
+          redhat7:
+            baseurl: http://cloudera-build-us-west-1.vpc.cloudera.com/s3/build/1048788/cm7/7.x.0/redhat7/yum/
+
 
   cdh:
     entries:
@@ -236,15 +248,30 @@ cb:
         minCM: 6.1
         repo:
           stack:
-            repoid: CDH
-            redhat7: https://archive.cloudera.com/cdh6/{latest_supported}/parcels/
+            repoid: CDH-6.1.0
+            redhat7: https://archive.cloudera.com/cdh6/6.1.0/parcels/
       "[6.1.1]":
         version: 6.1.1-1.cdh6.1.1.p0.875250
         minCM: 6.1
         repo:
           stack:
-            repoid: CDH
-            redhat7: https://archive.cloudera.com/cdh6/{latest_supported}/parcels/
+            repoid: CDH-6.1.1
+            redhat7: https://archive.cloudera.com/cdh6/6.1.1/parcels/
+      "[6.2.0]":
+        version: 6.2.0-1.cdh6.2.0.p0.967373
+        minCM: 6.2
+        repo:
+          stack:
+            repoid: CDH-6.2.0
+            redhat7: https://archive.cloudera.com/cdh6/6.2.0/parcels/
+      "[6.0.99]":
+        version: 6.0.99-1.cdh6.0.99.p0.134
+        minCM: 7.0
+        repo:
+          stack:
+            repoid: CDH-6.0.99
+            redhat7: http://cloudera-build-3-us-west-2.vpc.cloudera.com/s3/build/1048752/cdh/6.x/parcels/
+
 
   ambari:
     entries:
@@ -265,21 +292,23 @@ cb:
             baseurl: http://public-repo-1.hortonworks.com/ambari/sles12/2.x/updates/2.6.2.2
             gpgkey: http://public-repo-1.hortonworks.com/ambari/sles12/RPM-GPG-KEY/RPM-GPG-KEY-Jenkins
       2.7:
-        version: 2.7.100.0-266
+        version: 2.7.3.0
         repo:
           redhat7:
-            baseurl: http://s3.amazonaws.com/dev.hortonworks.com/ambari/centos7/2.x/BUILDS/2.7.100.0-266
-            gpgkey: http://s3.amazonaws.com/dev.hortonworks.com/ambari/centos7/2.x/BUILDS/2.7.100.0-266/RPM-GPG-KEY/RPM-GPG-KEY-Jenkins
+            baseurl: http://public-repo-1.hortonworks.com/ambari/centos7/2.x/updates/2.7.3.0
+            gpgkey: http://public-repo-1.hortonworks.com/ambari/centos7/2.x/updates/2.7.3.0/RPM-GPG-KEY/RPM-GPG-KEY-Jenkins
           debian9:
-            baseurl: http://s3.amazonaws.com/dev.hortonworks.com/ambari/debian9/2.x/BUILDS/2.7.100.0-266
+            baseurl: http://public-repo-1.hortonworks.com/ambari/debian9/2.x/updates/2.7.3.0
           ubuntu16:
-            baseurl: http://s3.amazonaws.com/dev.hortonworks.com/ambari/ubuntu16/2.x/BUILDS/2.7.100.0-266
+            baseurl: http://public-repo-1.hortonworks.com/ambari/ubuntu16/2.x/updates/2.7.3.0
+          ubuntu18:
+            baseurl: http://public-repo-1.hortonworks.com/ambari/ubuntu18/2.x/updates/2.7.3.0
           sles12:
-            baseurl: http://s3.amazonaws.com/dev.hortonworks.com/ambari/sles12/2.x/BUILDS/2.7.100.0-266
-            gpgkey: http://s3.amazonaws.com/dev.hortonworks.com/ambari/sles12/2.x/BUILDS/2.7.100.0-266/RPM-GPG-KEY/RPM-GPG-KEY-Jenkins
+            baseurl: http://public-repo-1.hortonworks.com/ambari/sles12/2.x/updates/2.7.3.0
+            gpgkey: http://public-repo-1.hortonworks.com/ambari/sles12/2.x/updates/2.7.3.0/RPM-GPG-KEY/RPM-GPG-KEY-Jenkins
           amazonlinux2:
-            baseurl: http://s3.amazonaws.com/dev.hortonworks.com/ambari/amazonlinux2/2.x/BUILDS/2.7.100.0-266
-            gpgkey: http://s3.amazonaws.com/dev.hortonworks.com/ambari/amazonlinux2/2.x/BUILDS/2.7.100.0-266/RPM-GPG-KEY/RPM-GPG-KEY-Jenkins
+            baseurl: http://public-repo-1.hortonworks.com/ambari/amazonlinux2/2.x/updates/2.7.3.0
+            gpgkey: http://public-repo-1.hortonworks.com/ambari/amazonlinux2/2.x/updates/2.7.3.0/RPM-GPG-KEY/RPM-GPG-KEY-Jenkins
     database:
       port: 5432
       user: ambari
@@ -336,30 +365,6 @@ cb:
             debian9: http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.22/repos/debian9
             ubuntu16: http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.22/repos/ubuntu16
             sles12: http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.22/repos/sles12
-      3.0:
-        version: 3.0.100.0
-        minAmbari: 2.7
-        repo:
-          stack:
-            repoid: HDP-3.0
-            redhat7: http://s3.amazonaws.com/dev.hortonworks.com/HDP/centos7/3.x/BUILDS/3.0.100.0-206
-            debian9: http://s3.amazonaws.com/dev.hortonworks.com/HDP/debian9/3.x/BUILDS/3.0.100.0-206
-            ubuntu16: http://s3.amazonaws.com/dev.hortonworks.com/HDP/ubuntu16/3.x/BUILDS/3.0.100.0-206
-            sles12: http://s3.amazonaws.com/dev.hortonworks.com/HDP/sles12/3.x/BUILDS/3.0.100.0-206
-            amazonlinux2: http://s3.amazonaws.com/dev.hortonworks.com/HDP/amazonlinux2/3.x/BUILDS/3.0.100.0-206
-            repository-version: 3.0.100.0-206
-            vdf-redhat7: http://s3.amazonaws.com/dev.hortonworks.com/HDP/centos7/3.x/BUILDS/3.0.100.0-206/HDP-3.0.100.0-206.xml
-            vdf-debian9: http://s3.amazonaws.com/dev.hortonworks.com/HDP/debian9/3.x/BUILDS/3.0.100.0-206/HDP-3.0.100.0-206.xml
-            vdf-ubuntu16: http://s3.amazonaws.com/dev.hortonworks.com/HDP/ubuntu16/3.x/BUILDS/3.0.100.0-206/HDP-3.0.100.0-206.xml
-            vdf-sles12: http://s3.amazonaws.com/dev.hortonworks.com/HDP/sles12/3.x/BUILDS/3.0.100.0-206/HDP-3.0.100.0-206.xml
-            vdf-amazonlinux2: http://s3.amazonaws.com/dev.hortonworks.com/HDP/amazonlinux2/3.x/BUILDS/3.0.100.0-206/HDP-3.0.100.0-206.xml
-          util:
-            repoid: HDP-UTILS-1.1.0.22
-            redhat7: http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.22/repos/centos7
-            debian9: http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.22/repos/debian9
-            ubuntu16: http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.22/repos/ubuntu16
-            sles12: http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.22/repos/sles12
-            amazonlinux2: http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.22/repos/amazonlinux2
       3.1:
         version: 3.1.0.0
         minAmbari: 2.7
@@ -509,9 +514,6 @@ cb:
             amazonlinux2:
               - mpackUrl: http://public-repo-1.hortonworks.com/HDF/amazonlinux2/3.x/updates/3.3.1.0/tars/hdf_ambari_mp/hdf-ambari-mpack-3.3.1.0-10.tar.gz
                 stackDefault: true
-  smartsense.configure: false
-  smartsense.enabled: true
-  smartsense.id.pattern: A-9990%s-C-%s
 
   structuredevent:
     rest:

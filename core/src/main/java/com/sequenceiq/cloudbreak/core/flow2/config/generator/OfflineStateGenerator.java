@@ -3,6 +3,7 @@ package com.sequenceiq.cloudbreak.core.flow2.config.generator;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -30,7 +31,7 @@ import org.springframework.statemachine.transition.Transition;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status;
 import com.sequenceiq.cloudbreak.cloud.event.Payload;
 import com.sequenceiq.cloudbreak.cloud.event.Selectable;
-import com.sequenceiq.cloudbreak.core.flow2.AbstractAction;
+import com.sequenceiq.cloudbreak.core.flow2.AbstractStackAction;
 import com.sequenceiq.cloudbreak.core.flow2.CommonContext;
 import com.sequenceiq.cloudbreak.core.flow2.Flow;
 import com.sequenceiq.cloudbreak.core.flow2.FlowEvent;
@@ -60,8 +61,8 @@ import com.sequenceiq.cloudbreak.core.flow2.stack.sync.StackSyncFlowConfig;
 import com.sequenceiq.cloudbreak.core.flow2.stack.termination.StackTerminationFlowConfig;
 import com.sequenceiq.cloudbreak.core.flow2.stack.upscale.StackUpscaleConfig;
 import com.sequenceiq.cloudbreak.domain.Credential;
-import com.sequenceiq.cloudbreak.domain.FlexSubscription;
 import com.sequenceiq.cloudbreak.domain.Network;
+import com.sequenceiq.cloudbreak.domain.projection.AutoscaleStack;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.workspace.User;
 import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
@@ -196,7 +197,7 @@ public class OfflineStateGenerator {
                 throw new IOException("Unable to create directories: " + destinationDir.getAbsolutePath());
             }
         }
-        Files.write(Paths.get(String.format("%s/%s.dot", OUT_PATH, flowConfiguration.getClass().getSimpleName())), content.getBytes("UTF-8"));
+        Files.write(Paths.get(String.format("%s/%s.dot", OUT_PATH, flowConfiguration.getClass().getSimpleName())), content.getBytes(StandardCharsets.UTF_8));
     }
 
     private static void inject(Object target, String name, Object value) {
@@ -274,8 +275,8 @@ public class OfflineStateGenerator {
     static class CustomStackRepository implements StackRepository {
 
         @Override
-        public Stack findByAmbari(String ambariIp) {
-            return null;
+        public Optional<Stack> findByAmbari(String ambariIp) {
+            return Optional.empty();
         }
 
         @Override
@@ -284,18 +285,28 @@ public class OfflineStateGenerator {
         }
 
         @Override
-        public Stack findByNameAndWorkspaceId(String name, Long workspaceId) {
+        public Optional<Stack> findByNameAndWorkspaceId(String name, Long workspaceId) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Set<Stack> findByNameInAndWorkspaceId(Set<String> name, Long workspaceId) {
             return null;
         }
 
         @Override
-        public Stack findByNameAndWorkspaceIdWithLists(String name, Long workspaceId) {
-            return null;
+        public Optional<Stack> findByNameAndWorkspaceIdWithLists(String name, Long workspaceId, Boolean showTerminated, Long terminatedAfter) {
+            return Optional.empty();
         }
 
         @Override
-        public Stack findOneWithLists(Long id) {
-            return null;
+        public Optional<Stack> findOneWithLists(Long id) {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Stack> findOneWithCluster(Long id) {
+            return Optional.empty();
         }
 
         @Override
@@ -314,13 +325,13 @@ public class OfflineStateGenerator {
         }
 
         @Override
-        public Stack findStackForCluster(Long id) {
-            return null;
+        public Optional<Stack> findStackForCluster(Long id) {
+            return Optional.empty();
         }
 
         @Override
-        public Stack findByNameInWorkspaceWithLists(String name, Workspace workspace) {
-            return null;
+        public Optional<Stack> findByNameInWorkspaceWithLists(String name, Workspace workspace) {
+            return Optional.empty();
         }
 
         @Override
@@ -349,12 +360,7 @@ public class OfflineStateGenerator {
         }
 
         @Override
-        public Set<Stack> findAliveOnesWithAmbari() {
-            return null;
-        }
-
-        @Override
-        public Long countByFlexSubscription(FlexSubscription flexSubscription) {
+        public Set<AutoscaleStack> findAliveOnesWithAmbari() {
             return null;
         }
 
@@ -394,13 +400,13 @@ public class OfflineStateGenerator {
         }
 
         @Override
-        public Workspace findWorkspaceById(Long id) {
-            return null;
+        public Optional<Workspace> findWorkspaceById(Long id) {
+            return Optional.empty();
         }
 
         @Override
-        public Stack findTemplateWithLists(Long id) {
-            return null;
+        public Optional<Stack> findTemplateWithLists(Long id) {
+            return Optional.empty();
         }
 
         @Override
@@ -477,8 +483,8 @@ public class OfflineStateGenerator {
         }
 
         @Override
-        public Stack findByNameAndWorkspace(String name, Workspace workspace) {
-            return null;
+        public Optional<Stack> findByNameAndWorkspace(String name, Workspace workspace) {
+            return Optional.empty();
         }
 
         @Override
@@ -510,7 +516,7 @@ public class OfflineStateGenerator {
         }
     }
 
-    static class CustomAction extends AbstractAction<FlowState, FlowEvent, CommonContext, Payload> {
+    static class CustomAction extends AbstractStackAction<FlowState, FlowEvent, CommonContext, Payload> {
         CustomAction() {
             super(Payload.class);
         }

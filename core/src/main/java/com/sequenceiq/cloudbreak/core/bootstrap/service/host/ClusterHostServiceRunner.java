@@ -2,7 +2,6 @@ package com.sequenceiq.cloudbreak.core.bootstrap.service.host;
 
 import static com.sequenceiq.cloudbreak.controller.exception.NotFoundException.notFound;
 import static com.sequenceiq.cloudbreak.core.bootstrap.service.ClusterDeletionBasedExitCriteriaModel.clusterDeletionBasedModel;
-import static com.sequenceiq.cloudbreak.service.cluster.ambari.AmbariRepositoryVersionService.AMBARI_VERSION_2_7_0_0;
 import static java.util.Collections.singletonMap;
 
 import java.io.IOException;
@@ -18,22 +17,31 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import javax.annotation.Nonnull;
 import javax.inject.Inject;
 
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
+import com.cloudera.thunderhead.service.usermanagement.UserManagementProto;
 import com.google.common.collect.Lists;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.ExposedService;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.ExecutorType;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.database.base.DatabaseType;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.base.SSOType;
-import com.sequenceiq.cloudbreak.clusterdefinition.kerberos.KerberosDetailService;
+import com.sequenceiq.cloudbreak.auth.altus.GrpcUmsClient;
 import com.sequenceiq.cloudbreak.cloud.PlatformParameters;
 import com.sequenceiq.cloudbreak.cloud.model.AmbariRepo;
+import com.sequenceiq.cloudbreak.cloud.model.ClouderaManagerRepo;
 import com.sequenceiq.cloudbreak.cloud.model.component.StackRepoDetails;
 import com.sequenceiq.cloudbreak.cloud.scheduler.CancellationException;
+import com.sequenceiq.cloudbreak.cluster.api.ClusterPreCreationApi;
+import com.sequenceiq.cloudbreak.cluster.service.ClusterComponentConfigProvider;
+import com.sequenceiq.cloudbreak.blueprint.kerberos.KerberosDetailService;
+import com.sequenceiq.cloudbreak.controller.exception.NotFoundException;
 import com.sequenceiq.cloudbreak.core.CloudbreakImageNotFoundException;
 import com.sequenceiq.cloudbreak.core.bootstrap.service.container.postgres.PostgresConfigService;
 import com.sequenceiq.cloudbreak.domain.KerberosConfig;
@@ -58,25 +66,22 @@ import com.sequenceiq.cloudbreak.orchestrator.model.Node;
 import com.sequenceiq.cloudbreak.orchestrator.model.SaltConfig;
 import com.sequenceiq.cloudbreak.orchestrator.model.SaltPillarProperties;
 import com.sequenceiq.cloudbreak.orchestrator.state.ExitCriteriaModel;
-import com.sequenceiq.cloudbreak.repository.InstanceMetaDataRepository;
-import com.sequenceiq.cloudbreak.repository.StackViewRepository;
 import com.sequenceiq.cloudbreak.service.CloudbreakException;
 import com.sequenceiq.cloudbreak.service.CloudbreakServiceException;
-import com.sequenceiq.cloudbreak.service.ClusterComponentConfigProvider;
-import com.sequenceiq.cloudbreak.service.ComponentConfigProvider;
+import com.sequenceiq.cloudbreak.service.ComponentConfigProviderService;
 import com.sequenceiq.cloudbreak.service.DefaultClouderaManagerRepoService;
 import com.sequenceiq.cloudbreak.service.GatewayConfigService;
-import com.sequenceiq.cloudbreak.service.SmartSenseCredentialConfigService;
-import com.sequenceiq.cloudbreak.service.clusterdefinition.ClusterDefinitionService;
-import com.sequenceiq.cloudbreak.service.clusterdefinition.ComponentLocatorService;
-import com.sequenceiq.cloudbreak.service.cluster.ambari.AmbariRepositoryVersionService;
-import com.sequenceiq.cloudbreak.service.cluster.ambari.AmbariSecurityConfigProvider;
+import com.sequenceiq.cloudbreak.service.cluster.ClusterApiConnectors;
 import com.sequenceiq.cloudbreak.service.cluster.flow.recipe.RecipeEngine;
+import com.sequenceiq.cloudbreak.service.blueprint.BlueprintService;
+import com.sequenceiq.cloudbreak.service.blueprint.ComponentLocatorService;
 import com.sequenceiq.cloudbreak.service.datalake.DatalakeResourcesService;
 import com.sequenceiq.cloudbreak.service.hostgroup.HostGroupService;
 import com.sequenceiq.cloudbreak.service.proxy.ProxyConfigProvider;
 import com.sequenceiq.cloudbreak.service.rdsconfig.RdsConfigService;
+import com.sequenceiq.cloudbreak.service.stack.InstanceMetaDataService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
+import com.sequenceiq.cloudbreak.service.stack.StackViewService;
 import com.sequenceiq.cloudbreak.service.stack.connector.adapter.ServiceProviderConnectorAdapter;
 import com.sequenceiq.cloudbreak.template.views.LdapView;
 import com.sequenceiq.cloudbreak.template.views.RdsView;
@@ -86,11 +91,13 @@ import com.sequenceiq.cloudbreak.util.StackUtil;
 @Component
 public class ClusterHostServiceRunner {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(ClusterHostServiceRunner.class);
+
     @Inject
     private StackService stackService;
 
     @Inject
-    private StackViewRepository stackViewRepository;
+    private StackViewService stackViewService;
 
     @Inject
     private HostOrchestratorResolver hostOrchestratorResolver;
@@ -102,19 +109,13 @@ public class ClusterHostServiceRunner {
     private HostGroupService hostGroupService;
 
     @Inject
-    private InstanceMetaDataRepository instanceMetaDataRepository;
+    private InstanceMetaDataService instanceMetaDataService;
 
     @Inject
     private ClusterComponentConfigProvider clusterComponentConfigProvider;
 
     @Inject
     private ComponentLocatorService componentLocator;
-
-    @Inject
-    private AmbariSecurityConfigProvider ambariSecurityConfigProvider;
-
-    @Inject
-    private SmartSenseCredentialConfigService smartSenseCredentialConfigService;
 
     @Inject
     private KerberosDetailService kerberosDetailService;
@@ -135,16 +136,10 @@ public class ClusterHostServiceRunner {
     private RecipeEngine recipeEngine;
 
     @Inject
-    private AmbariBlueprintPortConfigCollector ambariBlueprintPortConfigCollector;
-
-    @Inject
-    private AmbariRepositoryVersionService ambariRepositoryVersionService;
-
-    @Inject
     private ServiceProviderConnectorAdapter connector;
 
     @Inject
-    private ClusterDefinitionService clusterDefinitionService;
+    private BlueprintService blueprintService;
 
     @Inject
     private DatalakeResourcesService datalakeResourcesService;
@@ -153,9 +148,15 @@ public class ClusterHostServiceRunner {
     private DefaultClouderaManagerRepoService clouderaManagerRepoService;
 
     @Inject
-    private ComponentConfigProvider componentConfigProvider;
+    private ComponentConfigProviderService componentConfigProviderService;
 
-    public void runClusterServices(Stack stack, Cluster cluster) {
+    @Inject
+    private ClusterApiConnectors clusterApiConnectors;
+
+    @Inject
+    private GrpcUmsClient umsClient;
+
+    public void runClusterServices(@Nonnull Stack stack, @Nonnull Cluster cluster) {
         try {
             Set<Node> nodes = stackUtil.collectNodes(stack);
             HostOrchestrator hostOrchestrator = hostOrchestratorResolver.get(stack.getOrchestrator().getType());
@@ -163,7 +164,7 @@ public class ClusterHostServiceRunner {
             List<GatewayConfig> gatewayConfigs = gatewayConfigService.getAllGatewayConfigs(stack);
             SaltConfig saltConfig = createSaltConfig(stack, cluster, primaryGatewayConfig, gatewayConfigs);
             ExitCriteriaModel exitCriteriaModel = clusterDeletionBasedModel(stack.getId(), cluster.getId());
-            boolean clouderaManager = clusterDefinitionService.isClouderaManagerTemplate(cluster.getClusterDefinition());
+            boolean clouderaManager = blueprintService.isClouderaManagerTemplate(cluster.getBlueprint());
             hostOrchestrator.initServiceRun(gatewayConfigs, nodes, saltConfig, exitCriteriaModel, clouderaManager);
             recipeEngine.executePreClusterManagerRecipes(stack, hostGroupService.getByCluster(cluster.getId()));
             hostOrchestrator.runService(gatewayConfigs, nodes, saltConfig, exitCriteriaModel);
@@ -174,7 +175,7 @@ public class ClusterHostServiceRunner {
         }
     }
 
-    public Map<String, String> addClusterServices(Long stackId, String hostGroupName, Integer scalingAdjustment) throws CloudbreakException {
+    public Map<String, String> addClusterServices(Long stackId, String hostGroupName, Integer scalingAdjustment) {
         Map<String, String> candidates;
         Stack stack = stackService.getByIdWithListsInTransaction(stackId);
         Cluster cluster = stack.getCluster();
@@ -227,23 +228,25 @@ public class ClusterHostServiceRunner {
         servicePillar.put("discovery", new SaltPillarProperties("/discovery/init.sls", singletonMap("platform", stack.cloudPlatform())));
         servicePillar.put("metadata", new SaltPillarProperties("/metadata/init.sls",
                 singletonMap("cluster", singletonMap("name", stack.getCluster().getName()))));
-        saveGatewayPillar(primaryGatewayConfig, cluster, servicePillar);
+        ClusterPreCreationApi connector = clusterApiConnectors.getConnector(cluster);
+        saveGatewayPillar(primaryGatewayConfig, cluster, servicePillar, connector);
 
         postgresConfigService.decorateServicePillarWithPostgresIfNeeded(servicePillar, stack, cluster);
 
-        if (clusterDefinitionService.isClouderaManagerTemplate(cluster.getClusterDefinition())) {
-            decoratePillarWithClouderaManagerRepo(stack.getId(), servicePillar);
+        if (blueprintService.isClouderaManagerTemplate(cluster.getBlueprint())) {
+            decoratePillarWithClouderaManagerLicense(stack.getId(), servicePillar);
+            decoratePillarWithClouderaManagerRepo(stack.getId(), cluster.getId(), servicePillar);
             decoratePillarWithClouderaManagerDatabase(cluster, servicePillar);
         } else {
             AmbariRepo ambariRepo = clusterComponentConfigProvider.getAmbariRepo(cluster.getId());
             if (ambariRepo != null) {
                 Map<String, Object> ambariRepoMap = ambariRepo.asMap();
-                String clusterDefinitionText = cluster.getClusterDefinition().getClusterDefinitionText();
-                Json clusterDefinition = new Json(clusterDefinitionText);
-                ambariRepoMap.put("stack_version", clusterDefinition.getValue("Blueprints.stack_version"));
-                ambariRepoMap.put("stack_type", clusterDefinition.getValue("Blueprints.stack_name").toString().toLowerCase());
+                String blueprintText = cluster.getBlueprint().getBlueprintText();
+                Json blueprint = new Json(blueprintText);
+                ambariRepoMap.put("stack_version", blueprint.getValue("Blueprints.stack_version"));
+                ambariRepoMap.put("stack_type", blueprint.getValue("Blueprints.stack_name").toString().toLowerCase());
                 servicePillar.put("ambari-repo", new SaltPillarProperties("/ambari/repo.sls", singletonMap("ambari", singletonMap("repo", ambariRepoMap))));
-                boolean setupLdapAndSsoOnApi = ambariRepositoryVersionService.isVersionNewerOrEqualThanLimited(ambariRepo::getVersion, AMBARI_VERSION_2_7_0_0);
+                boolean setupLdapAndSsoOnApi = connector.isLdapAndSSOReady(ambariRepo);
                 servicePillar.put("setup-ldap-and-sso-on-api", new SaltPillarProperties("/ambari/config.sls",
                         singletonMap("ambari", singletonMap("setup_ldap_and_sso_on_api", setupLdapAndSsoOnApi))));
             }
@@ -260,17 +263,12 @@ public class ClusterHostServiceRunner {
         saveSssdIpaPillar(cluster, servicePillar);
         saveDockerPillar(cluster.getExecutorType(), servicePillar);
         saveHDPPillar(cluster.getId(), servicePillar);
-        saveLdapsAdPillar(cluster, servicePillar);
+        saveLdapsAdPillar(cluster, servicePillar, connector);
         Map<String, Object> credentials = new HashMap<>();
-        credentials.put("username", ambariSecurityConfigProvider.getCloudbreakAmbariUserName(stack.getCluster()));
-        credentials.put("password", ambariSecurityConfigProvider.getCloudbreakAmbariPassword(stack.getCluster()));
-        credentials.put("securityMasterKey", ambariSecurityConfigProvider.getAmbariSecurityMasterKey(cluster));
+        credentials.put("username", connector.getCloudbreakClusterUserName(cluster));
+        credentials.put("password", connector.getCloudbreakClusterPassword(cluster));
+        credentials.put("securityMasterKey", connector.getMasterKey(cluster));
         servicePillar.put("ambari-credentials", new SaltPillarProperties("/ambari/credentials.sls", singletonMap("ambari", credentials)));
-
-        if (smartSenseCredentialConfigService.areCredentialsSpecified()) {
-            Map<String, Object> smartSenseCredentials = smartSenseCredentialConfigService.getCredentials();
-            servicePillar.put("smartsense-credentials", new SaltPillarProperties("/smartsense/credentials.sls", smartSenseCredentials));
-        }
 
         proxyConfigProvider.decoratePillarWithProxyDataIfNeeded(servicePillar, cluster);
 
@@ -291,12 +289,12 @@ public class ClusterHostServiceRunner {
         }
     }
 
-    private void saveLdapsAdPillar(Cluster cluster, Map<String, SaltPillarProperties> servicePillar) {
+    private void saveLdapsAdPillar(Cluster cluster, Map<String, SaltPillarProperties> servicePillar, ClusterPreCreationApi connector) {
         if (Objects.nonNull(cluster.getLdapConfig()) && Objects.nonNull(cluster.getLdapConfig().getCertificate())) {
             Map<String, Object> ldapsProperties = new HashMap<>();
-            ldapsProperties.put("certPath", ambariSecurityConfigProvider.getCertPath());
-            ldapsProperties.put("keystorePassword", ambariSecurityConfigProvider.getKeystorePassword());
-            ldapsProperties.put("keystorePath", ambariSecurityConfigProvider.getKeystorePath());
+            ldapsProperties.put("certPath", connector.getCertPath());
+            ldapsProperties.put("keystorePassword", connector.getKeystorePassword());
+            ldapsProperties.put("keystorePath", connector.getKeystorePath());
             servicePillar.put("ldaps-ad", new SaltPillarProperties("/ambari/ldaps.sls", singletonMap("ambari", singletonMap("ldaps", ldapsProperties))));
         }
     }
@@ -335,14 +333,36 @@ public class ClusterHostServiceRunner {
                 new SaltPillarProperties("/cloudera-manager/database.sls", singletonMap("cloudera-manager", singletonMap("database", rdsView))));
     }
 
-    private void decoratePillarWithClouderaManagerRepo(Long stackId, Map<String, SaltPillarProperties> servicePillar)
+    private void decoratePillarWithClouderaManagerLicense(Long stackId, Map<String, SaltPillarProperties> servicePillar)
+            throws CloudbreakOrchestratorFailedException {
+        String userCrn = stackService.get(stackId).getCreator().getUserCrn();
+
+        if (umsClient.isUmsUsable(userCrn)) {
+            UserManagementProto.Account account = umsClient.getAccountDetails(userCrn, userCrn, Optional.empty());
+
+            if (StringUtils.isNotEmpty(account.getClouderaManagerLicenseKey())) {
+                LOGGER.debug("Got license key from UMS: {}", account.getClouderaManagerLicenseKey());
+                servicePillar.put("cloudera-manager-license",
+                        new SaltPillarProperties("/cloudera-manager/license.sls",
+                                singletonMap("cloudera-manager",
+                                        singletonMap("license", account.getClouderaManagerLicenseKey()))));
+            }
+        } else {
+            LOGGER.debug("Unable to get license with UMS.");
+        }
+    }
+
+    private void decoratePillarWithClouderaManagerRepo(Long stackId, Long clusterId, Map<String, SaltPillarProperties> servicePillar)
             throws CloudbreakOrchestratorFailedException {
         try {
-            String osType = componentConfigProvider.getImage(stackId).getOsType();
+            String osType = componentConfigProviderService.getImage(stackId).getOsType();
+            ClouderaManagerRepo clouderaManagerRepo = clusterComponentConfigProvider.getClouderaManagerRepoDetails(clusterId);
+
             servicePillar.put("cloudera-manager-repo", new SaltPillarProperties("/cloudera-manager/repo.sls",
-                    singletonMap("cloudera-manager", singletonMap("repo", clouderaManagerRepoService.getDefault(osType)))));
+                    singletonMap("cloudera-manager", singletonMap("repo", Objects.nonNull(clouderaManagerRepo)
+                            ? clouderaManagerRepo : clouderaManagerRepoService.getDefault(osType)))));
         } catch (CloudbreakImageNotFoundException e) {
-            throw new CloudbreakOrchestratorFailedException("Cannot determine image of stack, thus osType and repository informations cannot be provided.");
+            throw new CloudbreakOrchestratorFailedException("Cannot determine image of stack, thus osType and repository information cannot be provided.");
         }
     }
 
@@ -379,7 +399,7 @@ public class ClusterHostServiceRunner {
     private void saveDatalakeNameservers(Stack stack, Map<String, SaltPillarProperties> servicePillar) {
         Long datalakeResourceId = stack.getDatalakeResourceId();
         if (datalakeResourceId != null) {
-            Optional<DatalakeResources> datalakeResource = datalakeResourcesService.getDatalakeResourcesById(datalakeResourceId);
+            Optional<DatalakeResources> datalakeResource = datalakeResourcesService.findById(datalakeResourceId);
             if (datalakeResource.isPresent() && datalakeResource.get().getDatalakeStackId() != null) {
                 Long datalakeStackId = datalakeResource.get().getDatalakeStackId();
                 Stack dataLakeStack = stackService.getByIdWithListsInTransaction(datalakeStackId);
@@ -392,10 +412,11 @@ public class ClusterHostServiceRunner {
     }
 
     private StackView getStackView(Long datalakeId) {
-        return stackViewRepository.findById(datalakeId).orElseThrow(notFound("Stack view", datalakeId));
+        return stackViewService.findById(datalakeId).orElseThrow(notFound("Stack view", datalakeId));
     }
 
-    private void saveGatewayPillar(GatewayConfig gatewayConfig, Cluster cluster, Map<String, SaltPillarProperties> servicePillar) throws IOException {
+    private void saveGatewayPillar(GatewayConfig gatewayConfig, Cluster cluster, Map<String, SaltPillarProperties> servicePillar,
+            ClusterPreCreationApi connector) throws IOException {
         Map<String, Object> gateway = new HashMap<>();
         gateway.put("address", gatewayConfig.getPublicAddress());
         gateway.put("username", cluster.getUserName());
@@ -416,15 +437,15 @@ public class ClusterHostServiceRunner {
             gateway.put("mastersecret", clusterGateway.getKnoxMasterSecret());
             List<Map<String, Object>> topologies = getTopologies(clusterGateway);
             gateway.put("topologies", topologies);
-            if (cluster.getClusterDefinition() != null) {
-                Map<String, Integer> servicePorts = ambariBlueprintPortConfigCollector.getServicePorts(cluster.getClusterDefinition());
+            if (cluster.getBlueprint() != null) {
+                Map<String, Integer> servicePorts = connector.getServicePorts(cluster.getBlueprint());
                 gateway.put("ports", servicePorts);
             }
         }
 
         gateway.put("kerberos", cluster.getKerberosConfig() != null);
 
-        if (clusterDefinitionService.isAmbariBlueprint(cluster.getClusterDefinition())) {
+        if (blueprintService.isAmbariBlueprint(cluster.getBlueprint())) {
             Map<String, List<String>> serviceLocation = componentLocator.getComponentLocation(cluster, new HashSet<>(ExposedService.getAllServiceName()));
 
             List<String> rangerLocations = serviceLocation.get(ExposedService.RANGER.getServiceName());
@@ -487,11 +508,12 @@ public class ClusterHostServiceRunner {
     }
 
     private Map<String, String> collectUpscaleCandidates(Long clusterId, String hostGroupName, Integer adjustment) {
-        HostGroup hostGroup = hostGroupService.getByClusterIdAndName(clusterId, hostGroupName);
+        HostGroup hostGroup = hostGroupService.findHostGroupInClusterByName(clusterId, hostGroupName)
+                .orElseThrow(NotFoundException.notFound("hostgroup", hostGroupName));
         if (hostGroup.getConstraint().getInstanceGroup() != null) {
             Long instanceGroupId = hostGroup.getConstraint().getInstanceGroup().getId();
             Map<String, String> hostNames = new HashMap<>();
-            instanceMetaDataRepository.findUnusedHostsInInstanceGroup(instanceGroupId).stream()
+            instanceMetaDataService.findUnusedHostsInInstanceGroup(instanceGroupId).stream()
                     .filter(instanceMetaData -> instanceMetaData.getDiscoveryFQDN() != null)
                     .sorted(Comparator.comparing(InstanceMetaData::getStartDate))
                     .limit(adjustment.longValue())

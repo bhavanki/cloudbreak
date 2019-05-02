@@ -57,8 +57,7 @@
         },
         {
           "refName": "hdfs-DATANODE-BASE",
-          "roleType": "DATANODE",
-          "base": true
+          "roleType": "DATANODE"
         },
         {
           "refName": "hdfs-BALANCER-BASE",
@@ -106,7 +105,7 @@
         {
           "refName": "yarn-NODEMANAGER-BASE",
           "roleType": "NODEMANAGER",
-          "base": true
+          "base": false
         },
         {
           "refName": "yarn-JOBHISTORY-BASE",
@@ -154,6 +153,10 @@
         {
           "name": "hive_metastore_database_name",
           "variable": "hive-hive_metastore_database_name"
+        },
+        {
+          "name": "hive_metastore_database_user",
+          "variable": "hive-hive_metastore_database_user"
         }
       ],
       "roleConfigGroups": [
@@ -271,6 +274,20 @@
       {
         "name": "hive-hive_metastore_database_password",
         "value": "password"
+      },
+      {
+        "name": "hive-hive_metastore_database_user",
+        "value": "user"
+      }
+    ],
+    "roleConfigGroups": [
+      {
+        "rcgRefName": "hdfs-DATANODE-BASE",
+        "name": null
+      },
+      {
+        "rcgRefName": "yarn-NODEMANAGER-BASE",
+        "name": null
       }
     ]
   }

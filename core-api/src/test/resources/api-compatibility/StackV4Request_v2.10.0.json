@@ -82,6 +82,8 @@
   },
   "flexId": 0,
   "cluster": {
+    "userName": "string",
+    "password": "string",
     "emailNeeded": false,
     "emailTo": "string",
     "ldapConfigName": "string",
@@ -116,12 +118,10 @@
     },
     "executorType": "CONTAINER",
     "ambari": {
-      "clusterDefinitionId": 0,
-      "clusterDefinitionName": "string",
-      "userName": "string",
-      "password": "string",
+      "blueprintId": 0,
+      "blueprintName": "string",
       "kerberosConfigName": "testFreeIpaKdc",
-      "validateClusterDefinition": false,
+      "validateBlueprint": false,
       "ambariStackDetails": {
         "stack": "string",
         "version": "2.6",

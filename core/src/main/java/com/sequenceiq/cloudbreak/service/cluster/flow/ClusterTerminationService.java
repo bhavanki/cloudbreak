@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -21,11 +20,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import com.sequenceiq.cloudbreak.services.filesystem.FileSystemType;
-import com.sequenceiq.cloudbreak.template.filesystem.BaseFileSystemConfigurationsView;
-import com.sequenceiq.cloudbreak.template.filesystem.FileSystemConfigurationsViewProvider;
-import com.sequenceiq.cloudbreak.template.filesystem.FileSystemConfigurator;
 import com.sequenceiq.cloudbreak.common.model.OrchestratorType;
+import com.sequenceiq.cloudbreak.controller.exception.NotFoundException;
 import com.sequenceiq.cloudbreak.core.bootstrap.service.OrchestratorTypeResolver;
 import com.sequenceiq.cloudbreak.core.bootstrap.service.container.ContainerOrchestratorResolver;
 import com.sequenceiq.cloudbreak.domain.Constraint;
@@ -39,16 +35,20 @@ import com.sequenceiq.cloudbreak.orchestrator.container.ContainerOrchestrator;
 import com.sequenceiq.cloudbreak.orchestrator.exception.CloudbreakOrchestratorException;
 import com.sequenceiq.cloudbreak.orchestrator.model.ContainerInfo;
 import com.sequenceiq.cloudbreak.orchestrator.model.OrchestrationCredential;
-import com.sequenceiq.cloudbreak.repository.ConstraintRepository;
-import com.sequenceiq.cloudbreak.repository.ContainerRepository;
-import com.sequenceiq.cloudbreak.repository.HostGroupRepository;
 import com.sequenceiq.cloudbreak.service.CloudbreakException;
-import com.sequenceiq.cloudbreak.service.ComponentConfigProvider;
+import com.sequenceiq.cloudbreak.service.ComponentConfigProviderService;
 import com.sequenceiq.cloudbreak.service.TransactionService;
 import com.sequenceiq.cloudbreak.service.TransactionService.TransactionExecutionException;
 import com.sequenceiq.cloudbreak.service.cluster.ClusterService;
+import com.sequenceiq.cloudbreak.service.cluster.ContainerService;
+import com.sequenceiq.cloudbreak.service.constraint.ConstraintService;
+import com.sequenceiq.cloudbreak.service.hostgroup.HostGroupService;
 import com.sequenceiq.cloudbreak.service.rdsconfig.RdsConfigService;
 import com.sequenceiq.cloudbreak.service.stack.flow.TerminationFailedException;
+import com.sequenceiq.cloudbreak.services.filesystem.FileSystemType;
+import com.sequenceiq.cloudbreak.template.filesystem.BaseFileSystemConfigurationsView;
+import com.sequenceiq.cloudbreak.template.filesystem.FileSystemConfigurationsViewProvider;
+import com.sequenceiq.cloudbreak.template.filesystem.FileSystemConfigurator;
 
 @Component
 public class ClusterTerminationService {
@@ -61,16 +61,16 @@ public class ClusterTerminationService {
     private ClusterService clusterService;
 
     @Inject
-    private HostGroupRepository hostGroupRepository;
+    private HostGroupService hostGroupService;
 
     @Resource
-    private Map<FileSystemType, FileSystemConfigurator> fileSystemConfigurators;
+    private Map<FileSystemType, FileSystemConfigurator<BaseFileSystemConfigurationsView>> fileSystemConfigurators;
 
     @Inject
-    private ConstraintRepository constraintRepository;
+    private ConstraintService constraintService;
 
     @Inject
-    private ContainerRepository containerRepository;
+    private ContainerService containerService;
 
     @Inject
     private OrchestratorTypeResolver orchestratorTypeResolver;
@@ -79,7 +79,7 @@ public class ClusterTerminationService {
     private ContainerOrchestratorResolver containerOrchestratorResolver;
 
     @Inject
-    private ComponentConfigProvider componentConfigProvider;
+    private ComponentConfigProviderService componentConfigProviderService;
 
     @Inject
     private RdsConfigService rdsConfigService;
@@ -117,12 +117,12 @@ public class ClusterTerminationService {
             try {
                 Map<String, Object> map = new HashMap<>(orchestrator.getAttributes().getMap());
                 OrchestrationCredential credential = new OrchestrationCredential(orchestrator.getApiEndpoint(), map);
-                Set<Container> containers = containerRepository.findContainersInCluster(cluster.getId());
+                Set<Container> containers = containerService.findContainersInCluster(cluster.getId());
                 List<ContainerInfo> containerInfo = containers.stream()
                         .map(c -> new ContainerInfo(c.getContainerId(), c.getName(), c.getHost(), c.getImage())).collect(Collectors.toList());
                 containerOrchestrator.deleteContainer(containerInfo, credential);
                 transactionService.required(() -> {
-                    containerRepository.deleteAll(containers);
+                    containerService.deleteAll(containers);
                     deleteClusterHostGroupsWithItsMetadata(cluster);
                     return null;
                 });
@@ -137,7 +137,8 @@ public class ClusterTerminationService {
     }
 
     public void finalizeClusterTermination(Long clusterId) throws TransactionExecutionException {
-        Cluster cluster = clusterService.findOneWithLists(clusterId);
+        Cluster cluster = clusterService.findOneWithLists(clusterId)
+                .orElseThrow(NotFoundException.notFound("cluster", clusterId));
         Set<RDSConfig> rdsConfigs = cluster.getRdsConfigs();
         Long stackId = cluster.getStack().getId();
         String terminatedName = cluster.getName() + DELIMITER + new Date().getTime();
@@ -146,25 +147,20 @@ public class ClusterTerminationService {
         if (fs != null) {
             deleteFileSystemResources(stackId, fs);
         }
-        cluster.setClusterDefinition(null);
+        cluster.setBlueprint(null);
         cluster.setStack(null);
-        cluster.setLdapConfig(null);
-        cluster.setRdsConfigs(new HashSet<>());
-        cluster.setProxyConfig(null);
         cluster.setStatus(DELETE_COMPLETED);
         cluster.setFileSystem(null);
-        cluster.setEnvironment(null);
-        cluster.setKerberosConfig(null);
         transactionService.required(() -> {
             deleteClusterHostGroupsWithItsMetadata(cluster);
             rdsConfigService.deleteDefaultRdsConfigs(rdsConfigs);
-            componentConfigProvider.deleteComponentsForStack(stackId);
+            componentConfigProviderService.deleteComponentsForStack(stackId);
             return null;
         });
     }
 
     private void deleteClusterHostGroupsWithItsMetadata(Cluster cluster) {
-        Set<HostGroup> hostGroups = hostGroupRepository.findHostGroupsInCluster(cluster.getId());
+        Set<HostGroup> hostGroups = hostGroupService.findHostGroupsInCluster(cluster.getId());
         Collection<Constraint> constraintsToDelete = new LinkedList<>();
         for (HostGroup hg : hostGroups) {
             hg.getRecipes().clear();
@@ -173,8 +169,8 @@ public class ClusterTerminationService {
                 constraintsToDelete.add(constraint);
             }
         }
-        hostGroupRepository.deleteAll(hostGroups);
-        constraintRepository.deleteAll(constraintsToDelete);
+        hostGroupService.deleteAll(hostGroups);
+        constraintService.deleteAll(constraintsToDelete);
         cluster.getHostGroups().clear();
         cluster.getContainers().clear();
         clusterService.save(cluster);
@@ -182,7 +178,7 @@ public class ClusterTerminationService {
 
     private void deleteFileSystemResources(Long stackId, FileSystem fileSystem) {
         try {
-            FileSystemConfigurator fsConfigurator = fileSystemConfigurators.get(fileSystem.getType());
+            FileSystemConfigurator<BaseFileSystemConfigurationsView> fsConfigurator = fileSystemConfigurators.get(fileSystem.getType());
             BaseFileSystemConfigurationsView fsConfiguration = fileSystemConfigurationsViewProvider.propagateConfigurationsView(fileSystem);
             fsConfiguration.setStorageContainer("cloudbreak" + stackId);
             fsConfigurator.deleteResources(fsConfiguration);

@@ -6,8 +6,12 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 import javax.inject.Inject;
 
@@ -21,17 +25,21 @@ import org.springframework.util.CollectionUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ClusterV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ambari.AmbariV4Request;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.cm.ClouderaManagerV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.customcontainer.CustomContainerV4Request;
 import com.sequenceiq.cloudbreak.cloud.model.AmbariRepo;
 import com.sequenceiq.cloudbreak.cloud.model.component.StackRepoDetails;
+import com.sequenceiq.cloudbreak.cloud.model.component.StackType;
 import com.sequenceiq.cloudbreak.common.type.ComponentType;
 import com.sequenceiq.cloudbreak.controller.exception.BadRequestException;
 import com.sequenceiq.cloudbreak.controller.exception.CloudbreakApiException;
 import com.sequenceiq.cloudbreak.controller.exception.NotFoundException;
 import com.sequenceiq.cloudbreak.converter.AbstractConversionServiceAwareConverter;
 import com.sequenceiq.cloudbreak.converter.util.CloudStorageValidationUtil;
+import com.sequenceiq.cloudbreak.converter.v4.stacks.cluster.clouderamanager.ClouderaManagerProductV4RequestToClouderaManagerProductConverter;
+import com.sequenceiq.cloudbreak.converter.v4.stacks.cluster.clouderamanager.ClouderaManagerRepositoryV4RequestToClouderaManagerRepoConverter;
 import com.sequenceiq.cloudbreak.domain.ClusterAttributes;
-import com.sequenceiq.cloudbreak.domain.ClusterDefinition;
+import com.sequenceiq.cloudbreak.domain.Blueprint;
 import com.sequenceiq.cloudbreak.domain.FileSystem;
 import com.sequenceiq.cloudbreak.domain.KerberosConfig;
 import com.sequenceiq.cloudbreak.domain.LdapConfig;
@@ -42,8 +50,8 @@ import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.ClusterComponent;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.gateway.Gateway;
 import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
-import com.sequenceiq.cloudbreak.service.clusterdefinition.ClusterDefinitionService;
-import com.sequenceiq.cloudbreak.service.kerberos.KerberosService;
+import com.sequenceiq.cloudbreak.service.blueprint.BlueprintService;
+import com.sequenceiq.cloudbreak.service.kerberos.KerberosConfigService;
 import com.sequenceiq.cloudbreak.service.ldapconfig.LdapConfigService;
 import com.sequenceiq.cloudbreak.service.proxy.ProxyConfigService;
 import com.sequenceiq.cloudbreak.service.rdsconfig.RdsConfigService;
@@ -65,10 +73,10 @@ public class ClusterV4RequestToClusterConverter extends AbstractConversionServic
     private CloudStorageValidationUtil cloudStorageValidationUtil;
 
     @Inject
-    private KerberosService kerberosService;
+    private KerberosConfigService kerberosConfigService;
 
     @Inject
-    private ClusterDefinitionService clusterDefinitionService;
+    private BlueprintService blueprintService;
 
     @Inject
     private WorkspaceService workspaceService;
@@ -89,21 +97,20 @@ public class ClusterV4RequestToClusterConverter extends AbstractConversionServic
         Cluster cluster = new Cluster();
         cluster.setName(source.getName());
         cluster.setStatus(REQUESTED);
-        cluster.setUserName(source.getAmbari().getUserName());
-        cluster.setPassword(source.getAmbari().getPassword());
+        cluster.setUserName(source.getUserName());
+        cluster.setPassword(source.getPassword());
         cluster.setExecutorType(source.getExecutorType());
-        convertGateway(source, cluster);
 
         if (source.getKerberosName() != null) {
-            KerberosConfig kerberosConfig = kerberosService.getByNameForWorkspaceId(source.getKerberosName(), workspace.getId());
+            KerberosConfig kerberosConfig = kerberosConfigService.getByNameForWorkspaceId(source.getKerberosName(), workspace.getId());
             cluster.setKerberosConfig(kerberosConfig);
         }
-        cluster.setConfigStrategy(source.getAmbari().getConfigStrategy());
         cluster.setCloudbreakAmbariUser(ambariUserName);
         cluster.setCloudbreakAmbariPassword(PasswordUtil.generatePassword());
         cluster.setDpAmbariUser(dpUsername);
         cluster.setDpAmbariPassword(PasswordUtil.generatePassword());
-        cluster.setClusterDefinition(getClusterDefinition(source.getAmbari(), workspace));
+        cluster.setBlueprint(getBlueprint(source.getBlueprintName(), workspace));
+        convertGateway(source, cluster);
         if (cloudStorageValidationUtil.isCloudStorageConfigured(source.getCloudStorage())) {
             cluster.setFileSystem(getConversionService().convert(source.getCloudStorage(), FileSystem.class));
         }
@@ -114,16 +121,23 @@ public class ClusterV4RequestToClusterConverter extends AbstractConversionServic
         } catch (JsonProcessingException ignored) {
             cluster.setCustomContainerDefinition(null);
         }
-        cluster.setAmbariSecurityMasterKey(source.getAmbari().getSecurityMasterKey());
         updateDatabases(source, cluster, workspace);
-        extractAmbariAndHdpRepoConfig(cluster, source.getAmbari());
+        convertVendorSpecificPart(source, cluster);
+        extractClusterManagerAndHdpRepoConfig(cluster, source);
         cluster.setProxyConfig(getProxyConfig(source.getProxyName(), workspace));
         cluster.setLdapConfig(getLdap(source.getLdapName(), workspace));
         return cluster;
     }
 
+    private void convertVendorSpecificPart(ClusterV4Request source, Cluster cluster) {
+        if (Objects.nonNull(source.getAmbari())) {
+            cluster.setConfigStrategy(source.getAmbari().getConfigStrategy());
+            cluster.setAmbariSecurityMasterKey(source.getAmbari().getSecurityMasterKey());
+        }
+    }
+
     private void convertGateway(ClusterV4Request source, Cluster cluster) {
-        if (source.getGateway() != null) {
+        if (source.getGateway() != null && blueprintService.isAmbariBlueprint(cluster.getBlueprint())) {
             if (StringUtils.isEmpty(source.getGateway().getPath())) {
                 source.getGateway().setPath(source.getName());
             }
@@ -155,32 +169,73 @@ public class ClusterV4RequestToClusterConverter extends AbstractConversionServic
         return configs;
     }
 
-    private void extractAmbariAndHdpRepoConfig(Cluster cluster, AmbariV4Request ambariRequest) {
-        try {
-            Set<ClusterComponent> components = new HashSet<>();
-            if (ambariRequest.getRepository() != null) {
-                AmbariRepo ambariRepo = getConversionService().convert(ambariRequest.getRepository(), AmbariRepo.class);
-                components.add(new ClusterComponent(ComponentType.AMBARI_REPO_DETAILS, new Json(ambariRepo), cluster));
-            }
-            if (ambariRequest.getStackRepository() != null) {
-                StackRepoDetails stackRepoDetails = getConversionService().convert(ambariRequest.getStackRepository(), StackRepoDetails.class);
-                components.add(new ClusterComponent(ComponentType.HDP_REPO_DETAILS, new Json(stackRepoDetails), cluster));
-            }
-            cluster.setComponents(components);
-        } catch (IOException e) {
-            throw new BadRequestException("Cannot serialize the stack template", e);
+    private void extractClusterManagerAndHdpRepoConfig(Cluster cluster, ClusterV4Request clusterRequest) {
+        Set<ClusterComponent> components = new HashSet<>();
+
+        AmbariV4Request ambariRequest = clusterRequest.getAmbari();
+        ClouderaManagerV4Request clouderaManagerRequest = clusterRequest.getCm();
+        if (Objects.nonNull(ambariRequest) && Objects.nonNull(clouderaManagerRequest)) {
+            throw new BadRequestException("Cannot determine cluster manager. More than one provided");
         }
+        if (Objects.nonNull(ambariRequest) && StackType.CDH.name().equals(cluster.getBlueprint().getStackType())) {
+            throw new BadRequestException("Cannot process the provided blueprint template with Ambari");
+        }
+        if (Objects.nonNull(clouderaManagerRequest) && !StackType.CDH.name().equals(cluster.getBlueprint().getStackType())) {
+            throw new BadRequestException("Cannot process the provided Ambari blueprint with Cloudera Manager");
+        }
+
+        Optional.ofNullable(ambariRequest)
+                .map(AmbariV4Request::getRepository)
+                .map(ambariRepoRequest -> getConversionService().convert(ambariRepoRequest, AmbariRepo.class))
+                .map(toJsonWrapException())
+                .map(ambariRepoJson -> new ClusterComponent(ComponentType.AMBARI_REPO_DETAILS, ambariRepoJson, cluster))
+                .ifPresent(components::add);
+
+        Optional.ofNullable(ambariRequest)
+                .map(AmbariV4Request::getStackRepository)
+                .map(stackRepoRequest -> getConversionService().convert(stackRepoRequest, StackRepoDetails.class))
+                .map(toJsonWrapException())
+                .map(ambariRepoJson -> new ClusterComponent(ComponentType.HDP_REPO_DETAILS, ambariRepoJson, cluster))
+                .ifPresent(components::add);
+
+        Optional.ofNullable(clouderaManagerRequest)
+                .map(ClouderaManagerV4Request::getRepository)
+                .map(ClouderaManagerRepositoryV4RequestToClouderaManagerRepoConverter::convert)
+                .map(toJsonWrapException())
+                .map(cmRepoJson -> new ClusterComponent(ComponentType.CM_REPO_DETAILS, cmRepoJson, cluster))
+                .ifPresent(components::add);
+
+        Optional.ofNullable(clouderaManagerRequest)
+                .map(ClouderaManagerV4Request::getProducts)
+                .orElseGet(List::of)
+                .stream()
+                .map(ClouderaManagerProductV4RequestToClouderaManagerProductConverter::convert)
+                .map(toJsonWrapException())
+                .map(cmRepoJson -> new ClusterComponent(ComponentType.CDH_PRODUCT_DETAILS, cmRepoJson, cluster))
+                .forEach(components::add);
+
+        cluster.setComponents(components);
     }
 
-    private ClusterDefinition getClusterDefinition(AmbariV4Request ambariV4Request, Workspace workspace) {
-        ClusterDefinition clusterDefinition = null;
-        if (!StringUtils.isEmpty(ambariV4Request.getClusterDefinitionName())) {
-            clusterDefinition = clusterDefinitionService.getByNameForWorkspace(ambariV4Request.getClusterDefinitionName(), workspace);
-            if (clusterDefinition == null) {
-                throw new NotFoundException("Cluster definition does not exists by name: " + ambariV4Request.getClusterDefinitionName());
+    private <T> Function<T, Json> toJsonWrapException() {
+        return repositoryObject -> {
+            try {
+                return new Json(repositoryObject);
+            } catch (IOException e) {
+                throw new BadRequestException("Cannot serialize the stack template", e);
+            }
+        };
+    }
+
+    private Blueprint getBlueprint(String blueprintName, Workspace workspace) {
+        Blueprint blueprint = null;
+        if (!StringUtils.isEmpty(blueprintName)) {
+            blueprint = blueprintService.getByNameForWorkspaceAndLoadDefaultsIfNecessary(blueprintName, workspace);
+            if (blueprint == null) {
+                throw new NotFoundException("Cluster definition does not exists by name: " + blueprintName);
             }
         }
-        return clusterDefinition;
+        return blueprint;
     }
 
     private void updateDatabases(ClusterV4Request source, Cluster cluster, Workspace workspace) {

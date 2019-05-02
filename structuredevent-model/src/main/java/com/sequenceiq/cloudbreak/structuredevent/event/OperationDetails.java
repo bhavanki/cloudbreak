@@ -4,7 +4,6 @@ import java.io.Serializable;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.util.Calendar;
 import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -40,12 +39,6 @@ public class OperationDetails implements Serializable {
     public OperationDetails() {
     }
 
-    public OperationDetails(StructuredEventType eventType, String resourceType, Long resourceId, String resourceName, String cloudbreakId,
-            String cloudbreakVersion, Long workspaceId, String userId, String userName, String tenant) {
-        this(Calendar.getInstance().getTimeInMillis(), eventType, resourceType, resourceId, resourceName, cloudbreakId, cloudbreakVersion, workspaceId, userId,
-                userName, tenant);
-    }
-
     public OperationDetails(Long timestamp, StructuredEventType eventType, String resourceType, Long resourceId, String resourceName, String cloudbreakId,
             String cloudbreakVersion, Long workspaceId, String userId, String userName, String tenant) {
         this.timestamp = timestamp;
@@ -59,7 +52,7 @@ public class OperationDetails implements Serializable {
         this.userId = userId;
         this.userName = userName;
         this.tenant = tenant;
-        this.uuid = UUID.randomUUID().toString();
+        uuid = UUID.randomUUID().toString();
     }
 
     public StructuredEventType getEventType() {

@@ -1,6 +1,7 @@
 package com.sequenceiq.cloudbreak.cloud.handler;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import javax.inject.Inject;
 
@@ -11,7 +12,9 @@ import org.springframework.stereotype.Component;
 import com.sequenceiq.cloudbreak.cloud.context.CloudContext;
 import com.sequenceiq.cloudbreak.cloud.event.resource.GetInstancesStateRequest;
 import com.sequenceiq.cloudbreak.cloud.event.resource.GetInstancesStateResult;
+import com.sequenceiq.cloudbreak.cloud.exception.CloudOperationNotSupportedException;
 import com.sequenceiq.cloudbreak.cloud.model.CloudVmInstanceStatus;
+import com.sequenceiq.cloudbreak.cloud.model.InstanceStatus;
 
 import reactor.bus.Event;
 import reactor.bus.EventBus;
@@ -35,7 +38,7 @@ public class InstanceStateHandler implements CloudPlatformEventHandler<GetInstan
     @Override
     public void accept(Event<GetInstancesStateRequest> event) {
         LOGGER.debug("Received event: {}", event);
-        GetInstancesStateRequest request = event.getData();
+        GetInstancesStateRequest<GetInstancesStateResult> request = event.getData();
         CloudContext cloudContext = request.getCloudContext();
         GetInstancesStateResult result;
         try {
@@ -43,6 +46,11 @@ public class InstanceStateHandler implements CloudPlatformEventHandler<GetInstan
                     instanceStateQuery.getCloudVmInstanceStatuses(
                             request.getCloudCredential(), cloudContext, request.getInstances());
             result = new GetInstancesStateResult(request, instanceStatuses);
+        } catch (CloudOperationNotSupportedException e) {
+            List<CloudVmInstanceStatus> unknownStatuses = request.getInstances().stream()
+                    .map(instance -> new CloudVmInstanceStatus(instance, InstanceStatus.UNKNOWN))
+                    .collect(Collectors.toList());
+            result = new GetInstancesStateResult(request, unknownStatuses);
         } catch (RuntimeException e) {
             result = new GetInstancesStateResult("Instance state synchronizing failed", e, request);
         }

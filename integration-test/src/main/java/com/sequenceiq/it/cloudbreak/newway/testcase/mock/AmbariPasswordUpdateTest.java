@@ -3,19 +3,20 @@ package com.sequenceiq.it.cloudbreak.newway.testcase.mock;
 import static com.sequenceiq.cloudbreak.cloud.model.InstanceStatus.STARTED;
 import static com.sequenceiq.cloudbreak.cloud.model.InstanceStatus.STOPPED;
 import static com.sequenceiq.it.cloudbreak.newway.Mock.gson;
+import static com.sequenceiq.it.cloudbreak.newway.context.RunningParameter.key;
 import static com.sequenceiq.it.spark.ITResponse.MOCK_ROOT;
 import static java.lang.String.format;
 import static javax.ws.rs.core.MediaType.TEXT_PLAIN;
 import static javax.ws.rs.core.Response.Status.OK;
 
-import org.testng.annotations.BeforeMethod;
+import javax.inject.Inject;
+
 import org.testng.annotations.Test;
 
-import com.sequenceiq.it.cloudbreak.newway.Stack;
-import com.sequenceiq.it.cloudbreak.newway.action.stack.StackTestAction;
+import com.sequenceiq.it.cloudbreak.newway.client.StackTestClient;
+import com.sequenceiq.it.cloudbreak.newway.context.Description;
 import com.sequenceiq.it.cloudbreak.newway.context.MockedTestContext;
-import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
-import com.sequenceiq.it.cloudbreak.newway.entity.stack.StackTestDto;
+import com.sequenceiq.it.cloudbreak.newway.dto.stack.StackTestDto;
 import com.sequenceiq.it.cloudbreak.newway.mock.model.SPIMock;
 import com.sequenceiq.it.cloudbreak.newway.testcase.AbstractIntegrationTest;
 import com.sequenceiq.it.spark.StatefulRoute;
@@ -27,30 +28,28 @@ public class AmbariPasswordUpdateTest extends AbstractIntegrationTest {
 
     private static final String CLOUD_INSTANCE_STATUSES = MOCK_ROOT + SPIMock.CLOUD_INSTANCE_STATUSES;
 
-    @BeforeMethod
-    public void beforeMethod(Object[] data) {
-        minimalSetupForClusterCreation((MockedTestContext) data[0]);
-    }
-
-    protected void minimalSetupForClusterCreation(TestContext testContext) {
-        createDefaultUser(testContext);
-        createDefaultCredential(testContext);
-        createDefaultEnvironment(testContext);
-        createDefaultImageCatalog(testContext);
-        initializeDefaultClusterDefinitions(testContext);
-    }
+    @Inject
+    private StackTestClient stackTestClient;
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
-    public void testModifyAmbariPasswordThenValidate(MockedTestContext testContext) {
-        String clusterName = getNameGenerator().getRandomNameForResource();
+    @Description(
+            given = "a stack with an Ambari cluster",
+            when = "password of the cluster is modified",
+            then = "the cluster should still be available")
+    public void createAmbariClusterAndModifyThePasswordOnItThenNoExceptionOccursTheStackIsAvailable(MockedTestContext testContext) {
+        String clusterName = resourcePropertyProvider().getName();
+        String generatedKey = resourcePropertyProvider().getName();
+
         mockAmbari(testContext, clusterName);
         mockSpi(testContext);
         testContext
-                .given(StackTestDto.class).valid().withName(clusterName)
-                .when(Stack.postV4())
-                .await(STACK_AVAILABLE)
-                .when(StackTestAction::modifyAmbariPassword)
-                .await(STACK_AVAILABLE)
+                .given(generatedKey, StackTestDto.class)
+                .valid()
+                .withName(clusterName)
+                .when(stackTestClient.createV4(), key(generatedKey))
+                .await(STACK_AVAILABLE, key(generatedKey))
+                .when(stackTestClient.modifyAmbariPasswordV4(), key(generatedKey))
+                .await(STACK_AVAILABLE, key(generatedKey))
                 .validate();
     }
 

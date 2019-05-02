@@ -2,7 +2,6 @@ package com.sequenceiq.cloudbreak.client;
 
 import java.security.KeyManagementException;
 import java.security.SecureRandom;
-import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 
 import javax.net.ssl.HostnameVerifier;
@@ -38,7 +37,7 @@ public class CertificateTrustManager {
             // Install the all-trusting trust manager
             SSLContext sc = SslConfigurator.newInstance().createSSLContext();
             sc.init(null, trustAllCerts, new SecureRandom());
-            LOGGER.debug("Trust all SSL cerificates has been installed");
+            LOGGER.debug("Trust all SSL certificates has been installed");
             return sc;
         } catch (KeyManagementException e) {
             LOGGER.error(e.getMessage(), e);
@@ -77,11 +76,11 @@ public class CertificateTrustManager {
         }
 
         @Override
-        public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+        public void checkClientTrusted(X509Certificate[] chain, String authType) {
         }
 
         @Override
-        public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+        public void checkServerTrusted(X509Certificate[] chain, String authType) {
             this.chain = chain;
         }
 

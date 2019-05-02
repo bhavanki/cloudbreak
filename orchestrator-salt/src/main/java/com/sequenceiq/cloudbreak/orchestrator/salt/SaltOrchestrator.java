@@ -109,9 +109,6 @@ public class SaltOrchestrator implements HostOrchestrator {
     @Value("${rest.debug}")
     private boolean restDebug;
 
-    @Value("${cb.smartsense.configure:false}")
-    private boolean configureSmartSense;
-
     private ParallelOrchestratorComponentRunner parallelOrchestratorComponentRunner;
 
     private ExitCriteria exitCriteria;
@@ -281,20 +278,19 @@ public class SaltOrchestrator implements HostOrchestrator {
             if (saltConfig.getServicePillarConfig().containsKey("kerberos")) {
                 runSaltCommand(sc, new GrainAddRunner(allNodeIP, allNodes, "kerberized"), exitModel);
             }
-            // smartsense
-            if (configureSmartSense) {
-                runSaltCommand(sc, new GrainAddRunner(gatewayTargets, allNodes, "smartsense"), exitModel);
-                runSaltCommand(sc, new GrainAddRunner(allNodeIP, allNodes, "smartsense_agent_update"), exitModel);
-            }
             uploadGrains(allNodes, saltConfig.getGrainsProperties(), exitModel, sc);
 
             runSaltCommand(sc, new SyncAllRunner(allNodeIP, allNodes), exitModel);
             runSaltCommand(sc, new MineUpdateRunner(gatewayTargets, allNodes), exitModel);
-        } catch (Exception e) {
+        } catch (ExecutionException e) {
             LOGGER.warn("Error occurred during ambari bootstrap", e);
-            if (e instanceof ExecutionException && e.getCause() instanceof CloudbreakOrchestratorFailedException) {
+            if (e.getCause() instanceof CloudbreakOrchestratorFailedException) {
                 throw (CloudbreakOrchestratorFailedException) e.getCause();
             }
+            throw new CloudbreakOrchestratorFailedException(e);
+
+        } catch (Exception e) {
+            LOGGER.warn("Error occurred during ambari bootstrap", e);
             throw new CloudbreakOrchestratorFailedException(e);
         }
     }
@@ -347,11 +343,14 @@ public class SaltOrchestrator implements HostOrchestrator {
             Map<String, JsonNode> roles = SaltStates.getGrains(sc, "roles");
             LOGGER.info("Roles before highstate: " + roles);
             runNewService(sc, new HighStateRunner(all, allNodes), exitModel);
-        } catch (Exception e) {
+        } catch (ExecutionException e) {
             LOGGER.info("Error occurred during ambari bootstrap", e);
-            if (e instanceof ExecutionException && e.getCause() instanceof CloudbreakOrchestratorFailedException) {
+            if (e.getCause() instanceof CloudbreakOrchestratorFailedException) {
                 throw (CloudbreakOrchestratorFailedException) e.getCause();
             }
+            throw new CloudbreakOrchestratorFailedException(e);
+        } catch (Exception e) {
+            LOGGER.info("Error occurred during ambari bootstrap", e);
             throw new CloudbreakOrchestratorFailedException(e);
         }
         LOGGER.debug("Run services on nodes finished: {}", allNodes);
@@ -411,11 +410,14 @@ public class SaltOrchestrator implements HostOrchestrator {
 
             // salt '*' state.highstate
             runNewService(sc, new HighStateRunner(server, allNodes), exitCriteriaModel);
-        } catch (Exception e) {
+        } catch (ExecutionException e) {
             LOGGER.warn("Error occurred during primary gateway change", e);
-            if (e instanceof ExecutionException && e.getCause() instanceof CloudbreakOrchestratorFailedException) {
+            if (e.getCause() instanceof CloudbreakOrchestratorFailedException) {
                 throw (CloudbreakOrchestratorFailedException) e.getCause();
             }
+            throw new CloudbreakOrchestratorFailedException(e);
+        } catch (Exception e) {
+            LOGGER.warn("Error occurred during primary gateway change", e);
             throw new CloudbreakOrchestratorFailedException(e);
         }
     }
@@ -653,6 +655,38 @@ public class SaltOrchestrator implements HostOrchestrator {
             throws CloudbreakOrchestratorFailedException {
         LOGGER.debug("Executing pre-termination recipes.");
         executeRecipes(gatewayConfig, allNodes, exitCriteriaModel, RecipeExecutionPhase.PRE_TERMINATION);
+    }
+
+    @Override
+    public void stopClusterManagerAgent(GatewayConfig gatewayConfig, Set<Node> nodes, ExitCriteriaModel exitCriteriaModel, boolean adJoinable,
+            boolean ipaJoinable) throws CloudbreakOrchestratorFailedException {
+        try (SaltConnector sc = new SaltConnector(gatewayConfig, restDebug)) {
+            LOGGER.debug("Applying role 'cloudera_manager_agent_stop' on nodes: [{}]", nodes);
+            Set<String> targets = nodes.stream().map(Node::getPrivateIp).collect(Collectors.toSet());
+            runSaltCommand(sc, new GrainAddRunner(targets, nodes, "roles", "cloudera_manager_agent_stop", CompoundType.IP), exitCriteriaModel);
+            if (adJoinable || ipaJoinable) {
+                String identityRole = adJoinable ? "ad_leave" : "ipa_leave";
+                LOGGER.debug("Applying role '{}' on nodes: [{}]", identityRole, nodes);
+                runSaltCommand(sc, new GrainAddRunner(targets, nodes, "roles", identityRole, CompoundType.IP), exitCriteriaModel);
+            }
+
+            Set<String> all = nodes.stream().map(Node::getPrivateIp).collect(Collectors.toSet());
+            runSaltCommand(sc, new SyncAllRunner(all, nodes), exitCriteriaModel);
+            runNewService(sc, new HighStateRunner(all, nodes), exitCriteriaModel, maxRetry, true);
+
+            // remove 'recipe' grain from all nodes
+            targets = nodes.stream().map(Node::getPrivateIp).collect(Collectors.toSet());
+            runSaltCommand(sc, new GrainRemoveRunner(targets, nodes, "roles", "cloudera_manager_agent_stop", CompoundType.IP), exitCriteriaModel);
+            if (adJoinable || ipaJoinable) {
+                String identityRole = adJoinable ? "ad_leave" : "ipa_leave";
+                runSaltCommand(sc, new GrainRemoveRunner(targets, nodes, "roles", identityRole, CompoundType.IP), exitCriteriaModel);
+            }
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            LOGGER.info("Error occurred during executing highstate (for cluster manager agent stop).", e);
+            throw new CloudbreakOrchestratorFailedException(e);
+        }
     }
 
     public void leaveDomain(GatewayConfig gatewayConfig, Set<Node> allNodes, String roleToRemove, String roleToAdd, ExitCriteriaModel exitCriteriaModel)

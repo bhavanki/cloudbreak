@@ -42,7 +42,6 @@ import org.springframework.util.StringUtils;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.sequenceiq.ambari.client.AmbariClient;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.DatabaseVendor;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.ResourceStatus;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.Status;
@@ -57,14 +56,18 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ambari.s
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ambari.stackrepository.mpack.ManagementPackDetailsV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.cluster.ClusterV4Response;
 import com.sequenceiq.cloudbreak.api.util.ConverterUtil;
+import com.sequenceiq.cloudbreak.aspect.Measure;
 import com.sequenceiq.cloudbreak.client.HttpClientConfig;
 import com.sequenceiq.cloudbreak.cloud.model.AmbariRepo;
 import com.sequenceiq.cloudbreak.cloud.model.VolumeSetAttributes;
 import com.sequenceiq.cloudbreak.cloud.model.component.ManagementPackComponent;
 import com.sequenceiq.cloudbreak.cloud.model.component.StackRepoDetails;
 import com.sequenceiq.cloudbreak.cloud.store.InMemoryStateStore;
-import com.sequenceiq.cloudbreak.clusterdefinition.utils.AmbariBlueprintUtils;
-import com.sequenceiq.cloudbreak.clusterdefinition.validation.AmbariBlueprintValidator;
+import com.sequenceiq.cloudbreak.cluster.api.ClusterApi;
+import com.sequenceiq.cloudbreak.cluster.service.ClusterComponentConfigProvider;
+import com.sequenceiq.cloudbreak.cluster.util.ResourceAttributeUtil;
+import com.sequenceiq.cloudbreak.blueprint.utils.BlueprintUtils;
+import com.sequenceiq.cloudbreak.blueprint.validation.AmbariBlueprintValidator;
 import com.sequenceiq.cloudbreak.common.model.OrchestratorType;
 import com.sequenceiq.cloudbreak.common.type.APIResourceType;
 import com.sequenceiq.cloudbreak.common.type.ComponentType;
@@ -76,7 +79,7 @@ import com.sequenceiq.cloudbreak.converter.scheduler.StatusToPollGroupConverter;
 import com.sequenceiq.cloudbreak.converter.util.GatewayConvertUtil;
 import com.sequenceiq.cloudbreak.core.bootstrap.service.OrchestratorTypeResolver;
 import com.sequenceiq.cloudbreak.core.flow2.service.ReactorFlowManager;
-import com.sequenceiq.cloudbreak.domain.ClusterDefinition;
+import com.sequenceiq.cloudbreak.domain.Blueprint;
 import com.sequenceiq.cloudbreak.domain.KerberosConfig;
 import com.sequenceiq.cloudbreak.domain.LdapConfig;
 import com.sequenceiq.cloudbreak.domain.ProxyConfig;
@@ -84,6 +87,7 @@ import com.sequenceiq.cloudbreak.domain.RDSConfig;
 import com.sequenceiq.cloudbreak.domain.Resource;
 import com.sequenceiq.cloudbreak.domain.StopRestrictionReason;
 import com.sequenceiq.cloudbreak.domain.Template;
+import com.sequenceiq.cloudbreak.domain.environment.Environment;
 import com.sequenceiq.cloudbreak.domain.json.Json;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.StackStatus;
@@ -96,36 +100,28 @@ import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceGroup;
 import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceMetaData;
 import com.sequenceiq.cloudbreak.domain.workspace.User;
 import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
-import com.sequenceiq.cloudbreak.repository.ConstraintRepository;
-import com.sequenceiq.cloudbreak.repository.GatewayRepository;
-import com.sequenceiq.cloudbreak.repository.HostMetadataRepository;
-import com.sequenceiq.cloudbreak.repository.InstanceMetaDataRepository;
-import com.sequenceiq.cloudbreak.repository.KerberosConfigRepository;
-import com.sequenceiq.cloudbreak.repository.ResourceRepository;
+import com.sequenceiq.cloudbreak.message.CloudbreakMessagesService;
 import com.sequenceiq.cloudbreak.repository.cluster.ClusterRepository;
 import com.sequenceiq.cloudbreak.service.CloudbreakException;
 import com.sequenceiq.cloudbreak.service.CloudbreakServiceException;
-import com.sequenceiq.cloudbreak.service.ClusterComponentConfigProvider;
 import com.sequenceiq.cloudbreak.service.DuplicateKeyValueException;
-import com.sequenceiq.cloudbreak.service.TlsSecurityService;
 import com.sequenceiq.cloudbreak.service.TransactionService;
 import com.sequenceiq.cloudbreak.service.TransactionService.TransactionExecutionException;
 import com.sequenceiq.cloudbreak.service.TransactionService.TransactionRuntimeExecutionException;
-import com.sequenceiq.cloudbreak.service.cluster.ambari.AmbariClientProvider;
-import com.sequenceiq.cloudbreak.service.cluster.ambari.AmbariRepositoryVersionService;
 import com.sequenceiq.cloudbreak.service.cluster.flow.ClusterTerminationService;
-import com.sequenceiq.cloudbreak.service.clusterdefinition.ClusterDefinitionService;
-import com.sequenceiq.cloudbreak.service.events.CloudbreakEventService;
+import com.sequenceiq.cloudbreak.service.blueprint.BlueprintService;
+import com.sequenceiq.cloudbreak.service.constraint.ConstraintService;
+import com.sequenceiq.cloudbreak.service.event.CloudbreakEventService;
 import com.sequenceiq.cloudbreak.service.filesystem.FileSystemConfigService;
+import com.sequenceiq.cloudbreak.service.gateway.GatewayService;
 import com.sequenceiq.cloudbreak.service.hostgroup.HostGroupService;
-import com.sequenceiq.cloudbreak.service.messages.CloudbreakMessagesService;
+import com.sequenceiq.cloudbreak.service.hostmetadata.HostMetadataService;
+import com.sequenceiq.cloudbreak.service.kerberos.KerberosConfigService;
 import com.sequenceiq.cloudbreak.service.rdsconfig.RdsConfigService;
+import com.sequenceiq.cloudbreak.service.resource.ResourceService;
+import com.sequenceiq.cloudbreak.service.stack.InstanceMetaDataService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
-import com.sequenceiq.cloudbreak.util.AmbariClientExceptionUtil;
 import com.sequenceiq.cloudbreak.util.JsonUtil;
-import com.sequenceiq.cloudbreak.util.StackUtil;
-
-import groovyx.net.http.HttpResponseException;
 
 @Service
 public class ClusterService {
@@ -140,31 +136,25 @@ public class ClusterService {
     private StackService stackService;
 
     @Inject
-    private ClusterDefinitionService clusterDefinitionService;
+    private BlueprintService blueprintService;
 
     @Inject
-    private ClusterRepository clusterRepository;
+    private ClusterRepository repository;
 
     @Inject
-    private GatewayRepository gatewayRepository;
+    private GatewayService gatewayService;
 
     @Inject
     private FileSystemConfigService fileSystemConfigService;
 
     @Inject
-    private KerberosConfigRepository kerberosConfigRepository;
+    private KerberosConfigService kerberosConfigService;
 
     @Inject
-    private ConstraintRepository constraintRepository;
+    private ConstraintService constraintService;
 
     @Inject
-    private HostMetadataRepository hostMetadataRepository;
-
-    @Inject
-    private InstanceMetaDataRepository instanceMetadataRepository;
-
-    @Inject
-    private AmbariClientProvider ambariClientProvider;
+    private HostMetadataService hostMetadataService;
 
     @Inject
     private ReactorFlowManager flowManager;
@@ -191,13 +181,10 @@ public class ClusterService {
     private HostGroupService hostGroupService;
 
     @Inject
-    private TlsSecurityService tlsSecurityService;
-
-    @Inject
     private StatusToPollGroupConverter statusToPollGroupConverter;
 
     @Inject
-    private InstanceMetaDataRepository instanceMetaDataRepository;
+    private InstanceMetaDataService instanceMetaDataService;
 
     @Inject
     private OrchestratorTypeResolver orchestratorTypeResolver;
@@ -212,19 +199,20 @@ public class ClusterService {
     private TransactionService transactionService;
 
     @Inject
-    private AmbariBlueprintUtils ambariBlueprintUtils;
+    private BlueprintUtils blueprintUtils;
 
     @Inject
-    private AmbariRepositoryVersionService ambariRepositoryVersionService;
+    private ResourceService resourceService;
 
     @Inject
-    private ResourceRepository resourceRepository;
+    private ResourceAttributeUtil resourceAttributeUtil;
 
     @Inject
-    private StackUtil stackUtil;
+    private ClusterApiConnectors clusterApiConnectors;
 
+    @Measure(ClusterService.class)
     public Cluster create(Stack stack, Cluster cluster, List<ClusterComponent> components, User user) throws TransactionExecutionException {
-        LOGGER.debug("Cluster requested [ClusterDefinitionId: {}]", cluster.getClusterDefinition().getId());
+        LOGGER.debug("Cluster requested [BlueprintId: {}]", cluster.getBlueprint().getId());
         String stackName = stack.getName();
         if (stack.getCluster() != null) {
             throw new BadRequestException(String.format("A cluster is already created on this stack! [cluster: '%s']", stack.getCluster().getName()));
@@ -234,7 +222,7 @@ public class ClusterService {
             cluster.setEnvironment(stack.getEnvironment());
 
             long start = System.currentTimeMillis();
-            if (clusterRepository.findByNameAndWorkspace(cluster.getName(), stack.getWorkspace()) != null) {
+            if (repository.findByNameAndWorkspace(cluster.getName(), stack.getWorkspace()).isPresent()) {
                 throw new DuplicateKeyValueException(APIResourceType.CLUSTER, cluster.getName());
             }
             LOGGER.debug("Cluster name collision check took {} ms for stack {}", System.currentTimeMillis() - start, stackName);
@@ -254,7 +242,7 @@ public class ClusterService {
             LOGGER.debug("Filesystem config saved in {} ms for stack {}", System.currentTimeMillis() - start, stackName);
 
             if (cluster.getKerberosConfig() != null) {
-                kerberosConfigRepository.save(cluster.getKerberosConfig());
+                kerberosConfigService.save(cluster.getKerberosConfig());
             }
             cluster.setStack(stack);
             stack.setCluster(cluster);
@@ -275,6 +263,10 @@ public class ClusterService {
         });
     }
 
+    public Long countAliveByEnvironment(Environment environment) {
+        return repository.countAliveOnesByWorkspaceAndEnvironment(environment.getWorkspace().getId(), environment.getId());
+    }
+
     private void setWorkspace(Cluster cluster, Workspace workspace) {
         cluster.setWorkspace(workspace);
         if (cluster.getGateway() != null) {
@@ -289,9 +281,9 @@ public class ClusterService {
         Cluster savedCluster;
         try {
             long start = System.currentTimeMillis();
-            savedCluster = clusterRepository.save(cluster);
+            savedCluster = repository.save(cluster);
             if (savedCluster.getGateway() != null) {
-                gatewayRepository.save(savedCluster.getGateway());
+                gatewayService.save(savedCluster.getGateway());
             }
             LOGGER.debug("Cluster object saved in {} ms for stack {}", System.currentTimeMillis() - start, stackName);
             clusterComponentConfigProvider.store(components, savedCluster);
@@ -314,7 +306,7 @@ public class ClusterService {
             Gateway gateway = cluster.getGateway();
             if (gateway != null) {
                 gateway.setCluster(savedCluster);
-                gatewayRepository.save(gateway);
+                gatewayService.save(gateway);
             }
             List<ClusterComponent> store = clusterComponentConfigProvider.store(cluster.getComponents(), savedCluster);
             savedCluster.setComponents(new HashSet<>(store));
@@ -330,7 +322,7 @@ public class ClusterService {
         cluster.getHostGroups().stream()
                 .map(HostGroup::getConstraint)
                 .filter(Objects::nonNull)
-                .forEach(it -> constraintRepository.save(it));
+                .forEach(it -> constraintService.save(it));
     }
 
     public boolean isMultipleGateway(Stack stack) {
@@ -356,20 +348,20 @@ public class ClusterService {
             return;
         }
 
-        Set<HostMetadata> primaryGateways = hostMetadataRepository.findHostsInClusterByName(clusterId, hostName);
+        Set<HostMetadata> primaryGateways = hostMetadataService.findHostsInClusterByName(clusterId, hostName);
 
         List<HostMetadata> oldPrimaryGateways = primaryGateways.stream()
                 .filter(hmd -> hmd.getHostMetadataState() != HostMetadataState.SERVICES_RUNNING)
                 .collect(Collectors.toList());
-        hostMetadataRepository.deleteAll(oldPrimaryGateways);
+        hostMetadataService.deleteAll(oldPrimaryGateways);
     }
 
     public Iterable<Cluster> saveAll(Iterable<Cluster> clusters) {
-        return clusterRepository.saveAll(clusters);
+        return repository.saveAll(clusters);
     }
 
     public Cluster save(Cluster cluster) {
-        return clusterRepository.save(cluster);
+        return repository.save(cluster);
     }
 
     public void delete(Long stackId, Boolean withStackDelete, Boolean deleteDependencies) {
@@ -391,15 +383,15 @@ public class ClusterService {
             transactionService.required(() -> {
                 List<Resource> resources = stack.getResourcesByType(ResourceType.AWS_ENCRYPTED_VOLUME);
                 resources.forEach(resource -> updateDeleteVolumesFlag(Boolean.TRUE, resource));
-                return resourceRepository.saveAll(resources);
+                return resourceService.saveAll(resources);
             });
         } catch (TransactionExecutionException e) {
             throw new TransactionRuntimeExecutionException(e);
         }
     }
 
-    public Cluster retrieveClusterByStackIdWithoutAuth(Long stackId) {
-        return clusterRepository.findOneByStackId(stackId);
+    public Optional<Cluster> retrieveClusterByStackIdWithoutAuth(Long stackId) {
+        return repository.findOneByStackId(stackId);
     }
 
     public ClusterV4Response retrieveClusterForCurrentUser(Long stackId) {
@@ -410,7 +402,7 @@ public class ClusterService {
     public Cluster updateAmbariClientConfig(Long clusterId, HttpClientConfig ambariClientConfig) {
         Cluster cluster = getCluster(clusterId);
         cluster.setAmbariIp(ambariClientConfig.getApiAddress());
-        cluster = clusterRepository.save(cluster);
+        cluster = repository.save(cluster);
         LOGGER.debug("Updated cluster: [ambariIp: '{}'].", ambariClientConfig.getApiAddress());
         return cluster;
     }
@@ -419,9 +411,9 @@ public class ClusterService {
         try {
             transactionService.required(() -> {
                 for (Entry<String, List<String>> hostGroupEntry : hostsPerHostGroup.entrySet()) {
-                    HostGroup hostGroup = hostGroupService.getByClusterIdAndName(clusterId, hostGroupEntry.getKey());
-                    if (hostGroup != null) {
-                        Set<String> existingHosts = hostMetadataRepository.findEmptyHostsInHostGroup(hostGroup.getId()).stream()
+                    Optional<HostGroup> hostGroup = hostGroupService.findHostGroupInClusterByName(clusterId, hostGroupEntry.getKey());
+                    if (hostGroup.isPresent()) {
+                        Set<String> existingHosts = hostMetadataService.findEmptyHostsInHostGroup(hostGroup.get().getId()).stream()
                                 .map(HostMetadata::getHostName)
                                 .collect(Collectors.toSet());
                         hostGroupEntry.getValue().stream()
@@ -429,11 +421,11 @@ public class ClusterService {
                                 .forEach(hostName -> {
                                     HostMetadata hostMetadataEntry = new HostMetadata();
                                     hostMetadataEntry.setHostName(hostName);
-                                    hostMetadataEntry.setHostGroup(hostGroup);
+                                    hostMetadataEntry.setHostGroup(hostGroup.get());
                                     hostMetadataEntry.setHostMetadataState(hostMetadataState);
-                                    hostGroup.getHostMetadata().add(hostMetadataEntry);
+                                    hostGroup.get().getHostMetadata().add(hostMetadataEntry);
                                 });
-                        hostGroupService.save(hostGroup);
+                        hostGroupService.save(hostGroup.get());
                     }
                 }
                 return null;
@@ -443,54 +435,15 @@ public class ClusterService {
         }
     }
 
-    public String getClusterJson(String ambariIp, Long stackId) {
-        try {
-            AmbariClient ambariClient = getAmbariClient(stackId);
-            String clusterJson = ambariClient.getClusterAsJson();
-            if (clusterJson == null) {
-                throw new BadRequestException(String.format("Cluster response coming from Ambari server was null. [Ambari Server IP: '%s']", ambariIp));
-            }
-            return clusterJson;
-        } catch (HttpResponseException e) {
-            if ("Not Found".equals(e.getMessage())) {
-                throw new NotFoundException("Ambari validation not found.", e);
-            } else {
-                String errorMessage = AmbariClientExceptionUtil.getErrorMessage(e);
-                throw new CloudbreakServiceException("Could not get Cluster from Ambari as JSON: " + errorMessage, e);
-            }
-        }
-    }
-
     public String getStackRepositoryJson(Long stackId) {
-        try {
-            AmbariClient ambariClient = getAmbariClient(stackId);
-            Stack stack = stackService.getById(stackId);
-            Cluster cluster = stack.getCluster();
-            if (cluster == null) {
-                throw new BadRequestException(String.format("There is no cluster installed on stack '%s'.", stack.getName()));
-            }
-            StackRepoDetails repoDetails = clusterComponentConfigProvider.getStackRepoDetails(cluster.getId());
-            String stackRepoId = repoDetails.getStack().get(StackRepoDetails.REPO_ID_TAG);
-            String osType = ambariRepositoryVersionService.getOsTypeForStackRepoDetails(repoDetails);
-            if ("".equals(osType)) {
-                LOGGER.debug(String.format("The stored HDP repo details (%s) do not contain OS information for stack '%s'.", repoDetails, stack.getName()));
-                return null;
-            }
-
-            String stackRepositoryJson = ambariClient.getLatestStackRepositoryAsJson(cluster.getName(), osType, stackRepoId);
-            if (stackRepositoryJson == null) {
-                throw new BadRequestException(String.format("Stack Repository response coming from Ambari server was null "
-                        + "for cluster '%s' and repo url '%s'.", cluster.getName(), stackRepoId));
-            }
-            return stackRepositoryJson;
-        } catch (HttpResponseException e) {
-            if ("Not Found".equals(e.getMessage())) {
-                throw new NotFoundException("Ambari validation not found.", e);
-            } else {
-                String errorMessage = AmbariClientExceptionUtil.getErrorMessage(e);
-                throw new CloudbreakServiceException("Could not get Stack Repository from Ambari as JSON: " + errorMessage, e);
-            }
+        Stack stack = stackService.getById(stackId);
+        Cluster cluster = stack.getCluster();
+        if (cluster == null) {
+            throw new BadRequestException(String.format("There is no cluster installed on stack '%s'.", stack.getName()));
         }
+        StackRepoDetails repoDetails = clusterComponentConfigProvider.getStackRepoDetails(cluster.getId());
+        String stackRepoId = repoDetails.getStack().get(REPO_ID_TAG);
+        return clusterApiConnectors.getConnector(stack).clusterModificationService().getStackRepositoryJson(repoDetails, stackRepoId);
     }
 
     public void updateHosts(Long stackId, HostGroupAdjustmentV4Request hostGroupAdjustment) {
@@ -558,30 +511,30 @@ public class ClusterService {
                 Map<String, HostMetadata> autoRecoveryHostMetadata = new HashMap<>();
                 Map<String, HostMetadata> failedHostMetadata = new HashMap<>();
                 for (String failedNode : failedNodes) {
-                    HostMetadata hostMetadata = hostMetadataRepository.findHostInClusterByName(cluster.getId(), failedNode);
-                    if (hostMetadata == null) {
+                    Optional<HostMetadata> hostMetadata = hostMetadataService.findHostInClusterByName(cluster.getId(), failedNode);
+                    if (hostMetadata.isEmpty()) {
                         throw new BadRequestException("No metadata information for the node: " + failedNode);
                     }
-                    HostGroup hostGroup = hostMetadata.getHostGroup();
+                    HostGroup hostGroup = hostMetadata.get().getHostGroup();
                     if (hostGroup.getRecoveryMode() == RecoveryMode.AUTO) {
-                        validateRepair(stack, hostMetadata, false);
+                        validateRepair(stack, hostMetadata.get(), false);
                     }
                     String hostGroupName = hostGroup.getName();
                     if (hostGroup.getRecoveryMode() == RecoveryMode.AUTO) {
-                        prepareForAutoRecovery(stack, autoRecoveryNodesMap, autoRecoveryHostMetadata, failedNode, hostMetadata, hostGroupName);
+                        prepareForAutoRecovery(stack, autoRecoveryNodesMap, autoRecoveryHostMetadata, failedNode, hostMetadata.get(), hostGroupName);
                     } else if (hostGroup.getRecoveryMode() == RecoveryMode.MANUAL) {
-                        failedHostMetadata.put(failedNode, hostMetadata);
+                        failedHostMetadata.put(failedNode, hostMetadata.get());
                     }
                 }
                 try {
                     if (!autoRecoveryNodesMap.isEmpty()) {
                         flowManager.triggerClusterRepairFlow(stackId, autoRecoveryNodesMap, false);
-                        String recoveryMessage = cloudbreakMessagesService.getMessage(Msg.AMBARI_CLUSTER_AUTORECOVERY_REQUESTED.code(),
+                        String recoveryMessage = cloudbreakMessagesService.getMessage(Msg.CLUSTER_AUTORECOVERY_REQUESTED.code(),
                                 Collections.singletonList(autoRecoveryNodesMap));
                         updateChangedHosts(cluster, autoRecoveryHostMetadata, HostMetadataState.HEALTHY, HostMetadataState.WAITING_FOR_REPAIR, recoveryMessage);
                     }
                     if (!failedHostMetadata.isEmpty()) {
-                        String recoveryMessage = cloudbreakMessagesService.getMessage(Msg.AMBARI_CLUSTER_FAILED_NODES_REPORTED.code(),
+                        String recoveryMessage = cloudbreakMessagesService.getMessage(Msg.CLUSTER_FAILED_NODES_REPORTED.code(),
                                 Collections.singletonList(failedHostMetadata.keySet()));
                         updateChangedHosts(cluster, failedHostMetadata, HostMetadataState.HEALTHY, HostMetadataState.UNHEALTHY, recoveryMessage);
                     }
@@ -716,17 +669,17 @@ public class ClusterService {
     }
 
     private void updateNodeVolumeSetsDeleteVolumesFlag(Stack stack, List<String> nodeIds, boolean deleteVolumes) {
-        resourceRepository.saveAll(stack.getDiskResources().stream()
+        resourceService.saveAll(stack.getDiskResources().stream()
                 .filter(resource -> nodeIds.contains(resource.getInstanceId()))
                 .map(volumeSet -> updateDeleteVolumesFlag(deleteVolumes, volumeSet))
                 .collect(Collectors.toList()));
     }
 
     private Resource updateDeleteVolumesFlag(boolean deleteVolumes, Resource volumeSet) {
-        Optional<VolumeSetAttributes> attributes = stackUtil.getTypedAttributes(volumeSet, VolumeSetAttributes.class);
+        Optional<VolumeSetAttributes> attributes = resourceAttributeUtil.getTypedAttributes(volumeSet, VolumeSetAttributes.class);
         attributes.ifPresent(volumeSetAttributes -> {
             volumeSetAttributes.setDeleteOnTermination(deleteVolumes);
-            stackUtil.setTypedAttributes(volumeSet, volumeSetAttributes);
+            resourceAttributeUtil.setTypedAttributes(volumeSet, volumeSetAttributes);
         });
         return volumeSet;
     }
@@ -734,7 +687,7 @@ public class ClusterService {
     private void triggerRepair(Long stackId, Map<String, List<String>> failedNodeMap, boolean removeOnly, List<String> recoveryMessageArgument) {
         if (!failedNodeMap.isEmpty()) {
             flowManager.triggerClusterRepairFlow(stackId, failedNodeMap, removeOnly);
-            String recoveryMessage = cloudbreakMessagesService.getMessage(Msg.AMBARI_CLUSTER_MANUALRECOVERY_REQUESTED.code(),
+            String recoveryMessage = cloudbreakMessagesService.getMessage(Msg.CLUSTER_MANUALRECOVERY_REQUESTED.code(),
                     Collections.singletonList(recoveryMessageArgument));
             LOGGER.debug(recoveryMessage);
             eventService.fireCloudbreakEvent(stackId, "RECOVERY", recoveryMessage);
@@ -754,7 +707,7 @@ public class ClusterService {
 
     private void updateChangedHosts(Cluster cluster, Map<String, HostMetadata> failedHostMetadata, HostMetadataState healthyState,
             HostMetadataState unhealthyState, String recoveryMessage) throws TransactionExecutionException {
-        Set<HostMetadata> hosts = hostMetadataRepository.findHostsInCluster(cluster.getId());
+        Set<HostMetadata> hosts = hostMetadataService.findHostsInCluster(cluster.getId());
         Collection<HostMetadata> changedHosts = new HashSet<>();
         transactionService.required(() -> {
             for (HostMetadata host : hosts) {
@@ -769,7 +722,7 @@ public class ClusterService {
             if (!changedHosts.isEmpty()) {
                 LOGGER.debug(recoveryMessage);
                 eventService.fireCloudbreakEvent(cluster.getStack().getId(), "RECOVERY", recoveryMessage);
-                hostMetadataRepository.saveAll(changedHosts);
+                hostMetadataService.saveAll(changedHosts);
             }
             return null;
         });
@@ -781,12 +734,12 @@ public class ClusterService {
 
     private void start(Stack stack, Cluster cluster) {
         if (stack.isStartInProgress()) {
-            String message = cloudbreakMessagesService.getMessage(Msg.AMBARI_CLUSTER_START_REQUESTED.code());
+            String message = cloudbreakMessagesService.getMessage(Msg.CLUSTER_START_REQUESTED.code());
             eventService.fireCloudbreakEvent(stack.getId(), START_REQUESTED.name(), message);
             updateClusterStatusByStackId(stack.getId(), START_REQUESTED);
         } else {
             if (cluster.isAvailable()) {
-                String statusDesc = cloudbreakMessagesService.getMessage(Msg.AMBARI_CLUSTER_START_IGNORED.code());
+                String statusDesc = cloudbreakMessagesService.getMessage(Msg.CLUSTER_START_IGNORED.code());
                 LOGGER.debug(statusDesc);
                 eventService.fireCloudbreakEvent(stack.getId(), stack.getStatus().name(), statusDesc);
             } else if (!cluster.isClusterReadyForStart() && !cluster.isStartFailed()) {
@@ -805,7 +758,7 @@ public class ClusterService {
     private void stop(Stack stack, Cluster cluster) {
         StopRestrictionReason reason = stack.isInfrastructureStoppable();
         if (cluster.isStopped()) {
-            String statusDesc = cloudbreakMessagesService.getMessage(Msg.AMBARI_CLUSTER_STOP_IGNORED.code());
+            String statusDesc = cloudbreakMessagesService.getMessage(Msg.CLUSTER_STOP_IGNORED.code());
             LOGGER.debug(statusDesc);
             eventService.fireCloudbreakEvent(stack.getId(), stack.getStatus().name(), statusDesc);
         } else if (reason != StopRestrictionReason.NONE) {
@@ -826,24 +779,24 @@ public class ClusterService {
     public Cluster updateClusterStatusByStackId(Long stackId, Status status, String statusReason) {
         LOGGER.debug("Updating cluster status. stackId: {}, status: {}, statusReason: {}", stackId, status, statusReason);
         StackStatus stackStatus = stackService.getCurrentStatusByStackId(stackId);
-        Cluster cluster = retrieveClusterByStackIdWithoutAuth(stackId);
-        if (cluster != null) {
-            cluster.setStatus(status);
-            cluster.setStatusReason(statusReason);
-            cluster = clusterRepository.save(cluster);
+        Optional<Cluster> cluster = retrieveClusterByStackIdWithoutAuth(stackId);
+        if (cluster.isPresent()) {
+            cluster.get().setStatus(status);
+            cluster.get().setStatusReason(statusReason);
+            cluster = Optional.ofNullable(repository.save(cluster.get()));
             if (status.isRemovableStatus()) {
-                InMemoryStateStore.deleteCluster(cluster.getId());
+                InMemoryStateStore.deleteCluster(cluster.get().getId());
                 if (stackStatus.getStatus().isRemovableStatus()) {
                     InMemoryStateStore.deleteStack(stackId);
                 }
             } else {
-                InMemoryStateStore.putCluster(cluster.getId(), statusToPollGroupConverter.convert(status));
+                InMemoryStateStore.putCluster(cluster.get().getId(), statusToPollGroupConverter.convert(status));
                 if (InMemoryStateStore.getStack(stackId) == null) {
                     InMemoryStateStore.putStack(stackId, statusToPollGroupConverter.convert(stackStatus.getStatus()));
                 }
             }
         }
-        return cluster;
+        return cluster.orElse(null);
     }
 
     public Cluster updateClusterStatusByStackId(Long stackId, Status status) {
@@ -856,7 +809,7 @@ public class ClusterService {
 
     public Cluster updateCluster(Cluster cluster) {
         LOGGER.debug("Updating cluster. clusterId: {}", cluster.getId());
-        cluster = clusterRepository.save(cluster);
+        cluster = repository.save(cluster);
         return cluster;
     }
 
@@ -870,15 +823,14 @@ public class ClusterService {
 
     public Cluster updateClusterMetadata(Long stackId) {
         Stack stack = stackService.getById(stackId);
-        AmbariClient ambariClient = getAmbariClient(stack);
-        Set<HostMetadata> hosts = hostMetadataRepository.findHostsInCluster(stack.getCluster().getId());
-        Map<String, String> hostStatuses = ambariClient.getHostStatuses();
+        ClusterApi connector = clusterApiConnectors.getConnector(stack);
+        Map<String, HostMetadataState> hostStatuses = connector.clusterStatusService().getHostStatuses();
+        Set<HostMetadata> hosts = hostMetadataService.findHostsInCluster(stack.getCluster().getId());
         try {
             return transactionService.required(() -> {
                 for (HostMetadata host : hosts) {
                     if (hostStatuses.containsKey(host.getHostName())) {
-                        HostMetadataState newState = HostMetadataState.HEALTHY.name().equals(hostStatuses.get(host.getHostName()))
-                                ? HostMetadataState.HEALTHY : HostMetadataState.UNHEALTHY;
+                        HostMetadataState newState = hostStatuses.get(host.getHostName());
                         boolean stateChanged = updateHostMetadataByHostState(stack, host.getHostName(), newState);
                         if (stateChanged && HostMetadataState.HEALTHY == newState) {
                             updateInstanceMetadataStateToRegistered(stackId, host);
@@ -893,31 +845,31 @@ public class ClusterService {
     }
 
     private void updateInstanceMetadataStateToRegistered(Long stackId, HostMetadata host) {
-        InstanceMetaData instanceMetaData = instanceMetaDataRepository.findHostInStack(stackId, host.getHostName());
-        if (instanceMetaData != null) {
-            instanceMetaData.setInstanceStatus(InstanceStatus.REGISTERED);
-            instanceMetadataRepository.save(instanceMetaData);
+        Optional<InstanceMetaData> instanceMetaData = instanceMetaDataService.findHostInStack(stackId, host.getHostName());
+        if (instanceMetaData.isPresent()) {
+            instanceMetaData.get().setInstanceStatus(InstanceStatus.REGISTERED);
+            instanceMetaDataService.save(instanceMetaData.get());
         }
     }
 
-    public Cluster recreate(Stack stack, String clusterDefinitionName, Set<HostGroup> hostGroups, boolean validateClusterDefinition,
+    public Cluster recreate(Stack stack, String blueprintName, Set<HostGroup> hostGroups, boolean validateBlueprint,
             StackRepoDetails stackRepoDetails, String kerberosPassword, String kerberosPrincipal) throws TransactionExecutionException {
         return transactionService.required(() -> {
-            checkClusterDefinitionIdAndHostGroups(clusterDefinitionName, hostGroups);
+            checkBlueprintIdAndHostGroups(blueprintName, hostGroups);
             Stack stackWithLists = stackService.getByIdWithListsInTransaction(stack.getId());
             Cluster cluster = getCluster(stackWithLists);
             if (cluster != null && stackWithLists.getCluster().getKerberosConfig() != null) {
                 initKerberos(kerberosPassword, kerberosPrincipal, cluster);
             }
-            ClusterDefinition clusterDefinition = clusterDefinitionService.getByNameForWorkspace(clusterDefinitionName, stack.getWorkspace());
+            Blueprint blueprint = blueprintService.getByNameForWorkspace(blueprintName, stack.getWorkspace());
             if (!withEmbeddedAmbariDB(cluster)) {
                 throw new BadRequestException("Ambari doesn't support resetting external DB automatically. To reset Ambari Server schema you must first drop "
                         + "and then create it using DDL scripts from /var/lib/ambari-server/resources");
             }
-            if (validateClusterDefinition) {
-                ambariBlueprintValidator.validateBlueprintForStack(cluster, clusterDefinition, hostGroups, stackWithLists.getInstanceGroups());
+            if (validateBlueprint) {
+                ambariBlueprintValidator.validateBlueprintForStack(cluster, blueprint, hostGroups, stackWithLists.getInstanceGroups());
             }
-            Boolean containerOrchestrator;
+            boolean containerOrchestrator;
             try {
                 containerOrchestrator = orchestratorTypeResolver.resolveType(stackWithLists.getOrchestrator()).containerOrchestrator();
             } catch (CloudbreakException ignored) {
@@ -929,10 +881,9 @@ public class ClusterService {
             }
 
             try {
-                Set<HostGroup> newHostGroups = hostGroupService.saveOrUpdateWithMetadata(hostGroups, cluster);
-                cluster = prepareCluster(hostGroups, stackRepoDetails, clusterDefinition, stackWithLists, cluster);
+                cluster = prepareCluster(hostGroups, stackRepoDetails, blueprint, stackWithLists, cluster);
                 triggerClusterInstall(stackWithLists, cluster);
-            } catch (TransactionExecutionException | CloudbreakException e) {
+            } catch (CloudbreakException e) {
                 throw new CloudbreakServiceException(e);
             }
             return stackWithLists.getCluster();
@@ -950,25 +901,25 @@ public class ClusterService {
         kerberosConfig.setPassword(kerberosPassword);
         kerberosConfig.setPrincipal(kerberosPrincipal);
 
-        kerberosConfigRepository.save(kerberosConfig);
+        kerberosConfigService.save(kerberosConfig);
     }
 
-    private void checkClusterDefinitionIdAndHostGroups(String clusterDefinition, Set<HostGroup> hostGroups) {
-        if (clusterDefinition == null || hostGroups == null) {
+    private void checkBlueprintIdAndHostGroups(String blueprint, Set<HostGroup> hostGroups) {
+        if (blueprint == null || hostGroups == null) {
             throw new BadRequestException("Cluster definition id and hostGroup assignments can not be null.");
         }
     }
 
-    private Cluster prepareCluster(Collection<HostGroup> hostGroups, StackRepoDetails stackRepoDetails, ClusterDefinition clusterDefinition, Stack stack,
+    private Cluster prepareCluster(Collection<HostGroup> hostGroups, StackRepoDetails stackRepoDetails, Blueprint blueprint, Stack stack,
             Cluster cluster) {
-        cluster.setClusterDefinition(clusterDefinition);
+        cluster.setBlueprint(blueprint);
         cluster.getHostGroups().clear();
         cluster.getHostGroups().addAll(hostGroups);
         createHDPRepoComponent(stackRepoDetails, stack);
-        LOGGER.debug("Cluster requested [ClusterDefinitionId: {}]", cluster.getClusterDefinition().getId());
+        LOGGER.debug("Cluster requested [BlueprintId: {}]", cluster.getBlueprint().getId());
         cluster.setStatus(REQUESTED);
         cluster.setStack(stack);
-        cluster = clusterRepository.save(cluster);
+        cluster = repository.save(cluster);
         return cluster;
     }
 
@@ -977,7 +928,7 @@ public class ClusterService {
     }
 
     private Cluster getCluster(Long clusterId) {
-        return clusterRepository.findById(clusterId)
+        return repository.findById(clusterId)
                 .orElseThrow(notFound("Cluster", clusterId));
     }
 
@@ -1074,7 +1025,10 @@ public class ClusterService {
         if (scalingAdjustment == 0) {
             throw new BadRequestException("No scaling adjustments specified. Nothing to do.");
         }
-        ambariBlueprintValidator.validateHostGroupScalingRequest(stack.getCluster().getClusterDefinition(), hostGroup, scalingAdjustment);
+        Blueprint clusterDefinition = stack.getCluster().getBlueprint();
+        if (blueprintService.isAmbariBlueprint(clusterDefinition)) {
+            ambariBlueprintValidator.validateHostGroupScalingRequest(stack.getCluster().getBlueprint(), hostGroup, scalingAdjustment);
+        }
         if (!downScale && hostGroup.getConstraint().getInstanceGroup() != null) {
             validateUnusedHosts(hostGroup.getConstraint().getInstanceGroup(), scalingAdjustment);
         } else {
@@ -1087,15 +1041,15 @@ public class ClusterService {
     }
 
     private void validateComponentsCategory(Stack stack, String hostGroup) {
-        ClusterDefinition clusterDefinition = stack.getCluster().getClusterDefinition();
-        String clusterDefinitionText = clusterDefinition.getClusterDefinitionText();
+        Blueprint blueprint = stack.getCluster().getBlueprint();
+        String blueprintText = blueprint.getBlueprintText();
         try {
-            JsonNode root = JsonUtil.readTree(clusterDefinitionText);
+            JsonNode root = JsonUtil.readTree(blueprintText);
             String blueprintName = root.path("Blueprints").path("blueprint_name").asText();
-            AmbariClient ambariClient = getAmbariClient(stack);
-            Map<String, String> categories = ambariClient.getComponentsCategory(blueprintName, hostGroup);
+            Map<String, String> categories =
+                    clusterApiConnectors.getConnector(stack).clusterModificationService().getComponentsByCategory(blueprintName, hostGroup);
             for (Entry<String, String> entry : categories.entrySet()) {
-                if (entry.getValue().equalsIgnoreCase(MASTER_CATEGORY) && !ambariBlueprintUtils.isSharedServiceReadyBlueprint(clusterDefinition)) {
+                if (entry.getValue().equalsIgnoreCase(MASTER_CATEGORY) && !blueprintUtils.isSharedServiceReadyBlueprint(blueprint)) {
                     throw new BadRequestException(
                             String.format("Cannot downscale the '%s' hostGroupAdjustment group, because it contains a '%s' component", hostGroup,
                                     entry.getKey()));
@@ -1107,7 +1061,7 @@ public class ClusterService {
     }
 
     private void validateUnusedHosts(InstanceGroup instanceGroup, int scalingAdjustment) {
-        Set<InstanceMetaData> unusedHostsInInstanceGroup = instanceMetadataRepository.findUnusedHostsInInstanceGroup(instanceGroup.getId());
+        Set<InstanceMetaData> unusedHostsInInstanceGroup = instanceMetaDataService.findUnusedHostsInInstanceGroup(instanceGroup.getId());
         if (unusedHostsInInstanceGroup.size() < scalingAdjustment) {
             throw new BadRequestException(String.format(
                     "There are %s unregistered instances in instance group '%s'. %s more instances needed to complete this request.",
@@ -1117,7 +1071,8 @@ public class ClusterService {
 
     private void validateRegisteredHosts(Stack stack, HostGroupAdjustmentV4Request hostGroupAdjustment) {
         String hostGroup = hostGroupAdjustment.getHostGroup();
-        int hostsCount = hostGroupService.getByClusterIdAndName(stack.getCluster().getId(), hostGroup).getHostMetadata().size();
+        int hostsCount = hostGroupService.findHostGroupInClusterByName(stack.getCluster().getId(), hostGroup)
+                .orElseThrow(NotFoundException.notFound("hostgroup", hostGroup)).getHostMetadata().size();
         int adjustment = Math.abs(hostGroupAdjustment.getScalingAdjustment());
         Boolean validateNodeCount = hostGroupAdjustment.getValidateNodeCount();
         if (validateNodeCount == null || validateNodeCount) {
@@ -1131,116 +1086,93 @@ public class ClusterService {
     }
 
     private HostGroup getHostGroup(Stack stack, HostGroupAdjustmentV4Request hostGroupAdjustment) {
-        HostGroup hostGroup = hostGroupService.getByClusterIdAndName(stack.getCluster().getId(), hostGroupAdjustment.getHostGroup());
-        if (hostGroup == null) {
+        Optional<HostGroup> hostGroup = hostGroupService.findHostGroupInClusterByName(stack.getCluster().getId(), hostGroupAdjustment.getHostGroup());
+        if (hostGroup.isEmpty()) {
             throw new BadRequestException(String.format(
                     "Invalid host group: cluster '%s' does not contain a host group named '%s'.",
                     stack.getCluster().getName(), hostGroupAdjustment.getHostGroup()));
         }
-        return hostGroup;
+        return hostGroup.get();
     }
 
     private boolean updateHostMetadataByHostState(Stack stack, String hostName, HostMetadataState newState) {
         boolean stateChanged = false;
-        HostMetadata hostMetadata = hostMetadataRepository.findHostInClusterByName(stack.getCluster().getId(), hostName);
+        HostMetadata hostMetadata = hostMetadataService.findHostInClusterByName(stack.getCluster().getId(), hostName)
+                .orElseThrow(NotFoundException.notFound("hostmetadata", hostName));
         HostMetadataState oldState = hostMetadata.getHostMetadataState();
         if (!oldState.equals(newState)) {
             stateChanged = true;
             hostMetadata.setHostMetadataState(newState);
-            hostMetadataRepository.save(hostMetadata);
+            hostMetadataService.save(hostMetadata);
             eventService.fireCloudbreakEvent(stack.getId(), AVAILABLE.name(),
-                    cloudbreakMessagesService.getMessage(Msg.AMBARI_CLUSTER_HOST_STATUS_UPDATED.code(), Arrays.asList(hostName, newState.name())));
+                    cloudbreakMessagesService.getMessage(Msg.CLUSTER_HOST_STATUS_UPDATED.code(), Arrays.asList(hostName, newState.name())));
         }
         return stateChanged;
     }
 
     public Cluster getById(Long id) {
-        Cluster cluster = clusterRepository.findOneWithLists(id);
-        if (cluster == null) {
-            throw new NotFoundException(String.format("Cluster '%s' not found", id));
-        }
-        return cluster;
+        return repository.findOneWithLists(id).orElseThrow(() -> new NotFoundException(String.format("Cluster '%s' not found", id)));
     }
-
-    /*public ConfigsResponse retrieveOutputs(Long stackId) {
-        Stack stack = stackService.getById(stackId);
-        Stack datalake = stackService.getById(stack.getDatalakeId());
-        return sharedServiceConfigProvider.retrieveOutputs(datalake, stack.getCluster().getBlueprint(), stack.getName());
-    }*/
 
     public Map<String, String> getHostStatuses(Long stackId) {
-        AmbariClient ambariClient = getAmbariClient(stackId);
-        return ambariClient.getHostStatuses();
-    }
-
-    private AmbariClient getAmbariClient(Long stackId) {
         Stack stack = stackService.getByIdWithListsInTransaction(stackId);
-        return getAmbariClient(stack);
+        return clusterApiConnectors.getConnector(stack).clusterStatusService().getHostStatusesRaw();
     }
 
-    private AmbariClient getAmbariClient(Stack stack) {
-        if (stack.getAmbariIp() == null) {
-            throw new NotFoundException(String.format("Ambari server is not available for the stack.[id: %s]", stack.getId()));
-        }
-        HttpClientConfig httpClientConfig = tlsSecurityService.buildTLSClientConfigForPrimaryGateway(stack.getId(), stack.getAmbariIp());
-        AmbariClient ambariClient = ambariClientProvider.getAmbariClient(httpClientConfig, stack.getGatewayPort(), stack.getCluster());
-        return ambariClient;
-    }
-
-    public Set<Cluster> findByClusterDefinition(ClusterDefinition clusterDefinition) {
-        return clusterRepository.findByClusterDefinition(clusterDefinition);
+    public Set<Cluster> findByBlueprint(Blueprint blueprint) {
+        return repository.findByBlueprint(blueprint);
     }
 
     public List<Cluster> findByStatuses(Collection<Status> statuses) {
-        return clusterRepository.findByStatuses(statuses);
+        return repository.findByStatuses(statuses);
     }
 
-    public Cluster findOneByStackId(Long stackId) {
-        return clusterRepository.findOneByStackId(stackId);
+    public Optional<Cluster> findOneByStackId(Long stackId) {
+        return repository.findOneByStackId(stackId);
     }
 
-    public Cluster findOneWithLists(Long id) {
-        return clusterRepository.findOneWithLists(id);
+    public Optional<Cluster> findOneWithLists(Long id) {
+        return repository.findOneWithLists(id);
     }
 
     public Optional<Cluster> findById(Long clusterId) {
-        return clusterRepository.findById(clusterId);
+        return repository.findById(clusterId);
     }
 
     public List<Cluster> findAllClustersForConstraintTemplate(Long constraintTemplateId) {
-        return clusterRepository.findAllClustersForConstraintTemplate(constraintTemplateId);
+        return repository.findAllClustersForConstraintTemplate(constraintTemplateId);
     }
 
     public Set<Cluster> findByLdapConfig(LdapConfig ldapConfig) {
-        return clusterRepository.findByLdapConfig(ldapConfig);
+        return repository.findByLdapConfigAndStatusNot(ldapConfig, Status.DELETE_COMPLETED);
     }
 
     public Set<Cluster> findAllClustersByLdapConfigInEnvironment(LdapConfig ldapConfig, Long environmentId) {
-        return clusterRepository.findByLdapConfigAndEnvironment(ldapConfig, environmentId);
+        return repository.findByLdapConfigAndEnvironment(ldapConfig, environmentId);
     }
 
     public Set<Cluster> findByProxyConfig(ProxyConfig proxyConfig) {
-        return clusterRepository.findByProxyConfig(proxyConfig);
+        return repository.findByProxyConfigAndStatusNot(proxyConfig, Status.DELETE_COMPLETED);
     }
 
     public Set<Cluster> findAllClustersByProxyConfigInEnvironment(ProxyConfig proxyConfig, Long environmentId) {
-        return clusterRepository.findByProxyConfigAndEnvironment(proxyConfig, environmentId);
+        return repository.findByProxyConfigAndEnvironment(proxyConfig, environmentId);
     }
 
     public Set<Cluster> findByRdsConfig(Long rdsConfigId) {
-        return clusterRepository.findByRdsConfig(rdsConfigId);
+        return repository.findByRdsConfig(rdsConfigId);
     }
 
     public Set<Cluster> findAllClustersByRdsConfigInEnvironment(RDSConfig rdsConfig, Long environmentId) {
-        return clusterRepository.findByRdsConfigAndEnvironment(rdsConfig.getId(), environmentId);
+        return repository.findByRdsConfigAndEnvironment(rdsConfig.getId(), environmentId);
     }
 
     public Set<Cluster> findByKerberosConfig(Long kerberosConfigId) {
-        return clusterRepository.findByKerberosConfig(kerberosConfigId);
+        return repository.findByKerberosConfig(kerberosConfigId);
     }
 
     public Set<Cluster> findAllClustersByKerberosConfigInEnvironment(KerberosConfig kerberosConfig, Long environmentId) {
-        return clusterRepository.findByKerberosConfigAndEnvironment(kerberosConfig.getId(), environmentId);
+        return repository.findByKerberosConfigAndEnvironment(kerberosConfig.getId(), environmentId);
     }
 
     public void updateAmbariRepoDetails(Long clusterId, StackRepositoryV4Request stackRepository) {
@@ -1375,17 +1307,17 @@ public class ClusterService {
     }
 
     public void pureDelete(Cluster cluster) {
-        clusterRepository.delete(cluster);
+        repository.delete(cluster);
     }
 
     private enum Msg {
-        AMBARI_CLUSTER_START_IGNORED("ambari.cluster.start.ignored"),
-        AMBARI_CLUSTER_STOP_IGNORED("ambari.cluster.stop.ignored"),
-        AMBARI_CLUSTER_HOST_STATUS_UPDATED("ambari.cluster.host.status.updated"),
-        AMBARI_CLUSTER_START_REQUESTED("ambari.cluster.start.requested"),
-        AMBARI_CLUSTER_AUTORECOVERY_REQUESTED("ambari.cluster.autorecovery.requested"),
-        AMBARI_CLUSTER_MANUALRECOVERY_REQUESTED("ambari.cluster.manualrecovery.requested"),
-        AMBARI_CLUSTER_FAILED_NODES_REPORTED("ambari.cluster.failednodes.reported");
+        CLUSTER_START_IGNORED("cluster.start.ignored"),
+        CLUSTER_STOP_IGNORED("cluster.stop.ignored"),
+        CLUSTER_HOST_STATUS_UPDATED("cluster.host.status.updated"),
+        CLUSTER_START_REQUESTED("cluster.start.requested"),
+        CLUSTER_AUTORECOVERY_REQUESTED("cluster.autorecovery.requested"),
+        CLUSTER_MANUALRECOVERY_REQUESTED("cluster.manualrecovery.requested"),
+        CLUSTER_FAILED_NODES_REPORTED("cluster.failednodes.reported");
 
         private final String code;
 

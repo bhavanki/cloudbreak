@@ -3,48 +3,49 @@ package com.sequenceiq.it.cloudbreak.newway.testcase.mock;
 import static com.sequenceiq.cloudbreak.common.type.HostMetadataState.HEALTHY;
 import static com.sequenceiq.cloudbreak.common.type.HostMetadataState.UNHEALTHY;
 import static com.sequenceiq.it.cloudbreak.newway.cloud.HostGroupType.WORKER;
+import static com.sequenceiq.it.cloudbreak.newway.context.RunningParameter.key;
 
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeMethod;
+import javax.inject.Inject;
+
 import org.testng.annotations.Test;
 
 import com.sequenceiq.cloudbreak.common.type.HostMetadataState;
-import com.sequenceiq.it.cloudbreak.newway.Stack;
-import com.sequenceiq.it.cloudbreak.newway.action.stack.StackTestAction;
-import com.sequenceiq.it.cloudbreak.newway.entity.stack.StackTestDto;
+import com.sequenceiq.it.cloudbreak.newway.client.StackTestClient;
+import com.sequenceiq.it.cloudbreak.newway.context.Description;
 import com.sequenceiq.it.cloudbreak.newway.context.MockedTestContext;
-import com.sequenceiq.it.cloudbreak.newway.entity.InstanceGroupEntity;
+import com.sequenceiq.it.cloudbreak.newway.dto.InstanceGroupTestDto;
+import com.sequenceiq.it.cloudbreak.newway.dto.stack.StackTestDto;
 import com.sequenceiq.it.cloudbreak.newway.testcase.AbstractIntegrationTest;
 import com.sequenceiq.it.spark.StatefulRoute;
 
 public class RecoveryItTest extends AbstractIntegrationTest {
 
-    private static final String WORKER_ID = "ig";
-
     private static final String HOSTS = "/api/v1/hosts";
 
-    @BeforeMethod
-    public void beforeMethod(Object[] data) {
-        MockedTestContext testContext = (MockedTestContext) data[0];
-        minimalSetupForClusterCreation(testContext);
-    }
-
-    @AfterMethod(alwaysRun = true)
-    public void tear(Object[] data) {
-        ((MockedTestContext) data[0]).cleanupTestContextEntity();
-    }
+    @Inject
+    private StackTestClient stackTestClient;
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK, enabled = false)
+    @Description(
+            given = "a created cluster",
+            when = "calling test action which says there is an unhealthy node",
+            then = "cluster status should be CREATE_FAILED")
     public void testWhenSyncTellsNodesAreUnhealthyThenClusterStatusHaveToChange(MockedTestContext testContext) {
-        String stackName = getNameGenerator().getRandomNameForResource();
+        String stackName = resourcePropertyProvider().getName();
+        String workerId = resourcePropertyProvider().getName();
+
         mockAmbari(testContext);
         testContext
-                .given(WORKER_ID, InstanceGroupEntity.class).withHostGroup(WORKER).withNodeCount(1)
-                .given(StackTestDto.class).withName(stackName).replaceInstanceGroups(WORKER_ID)
-                .when(Stack.postV4())
-                .await(STACK_AVAILABLE)
-                .when(StackTestAction::sync)
-                .await(STACK_FAILED)
+                .given(workerId, InstanceGroupTestDto.class)
+                .withHostGroup(WORKER)
+                .withNodeCount(1)
+                .given(stackName, StackTestDto.class)
+                .withName(stackName)
+                .replaceInstanceGroups(workerId)
+                .when(stackTestClient.createV4(), key(stackName))
+                .await(STACK_AVAILABLE, key(stackName))
+                .when(stackTestClient.syncV4(), key(stackName))
+                .await(STACK_FAILED, key(stackName))
                 .validate();
     }
 

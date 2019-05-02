@@ -12,7 +12,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
-import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ambari.RepositoryV4Request;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.repository.RepositoryV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ambari.stackrepository.StackRepositoryV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ambari.stackrepository.mpack.ManagementPackDetailsV4Request;
 
@@ -235,6 +235,29 @@ public class StackRepositoryV4ValidatorTest {
 
         boolean result = ambariStackValidator.isValid(ambariStackDetailsJson, constraintValidatorContext);
 
+        assertTrue(result);
+    }
+
+    @Test
+    public void testWithoutRepositorySpecificationSpecifiedAndWithManagementPackDetailsSetToEmpty() {
+        StackRepositoryV4Request ambariStackDetailsJson = new StackRepositoryV4Request();
+        ambariStackDetailsJson.setStack("HDP");
+        ambariStackDetailsJson.setVersion("3.0");
+        ambariStackDetailsJson.setVersionDefinitionFileUrl("https://myversiondefitionfile");
+
+        boolean result = ambariStackValidator.isValid(ambariStackDetailsJson, constraintValidatorContext);
+        assertTrue(result);
+    }
+
+    @Test
+    public void testWithoutRepositorySpecificationSpecifiedAndWithManagementPackDetailsSetToNull() {
+        StackRepositoryV4Request ambariStackDetailsJson = new StackRepositoryV4Request();
+        ambariStackDetailsJson.setStack("HDP");
+        ambariStackDetailsJson.setVersion("3.0");
+        ambariStackDetailsJson.setVersionDefinitionFileUrl("https://myversiondefitionfile");
+        ambariStackDetailsJson.setMpacks(null);
+
+        boolean result = ambariStackValidator.isValid(ambariStackDetailsJson, constraintValidatorContext);
         assertTrue(result);
     }
 

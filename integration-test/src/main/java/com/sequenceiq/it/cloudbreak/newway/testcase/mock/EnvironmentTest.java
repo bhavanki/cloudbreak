@@ -9,35 +9,31 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import javax.inject.Inject;
 import javax.ws.rs.BadRequestException;
 import javax.ws.rs.ForbiddenException;
 
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import com.sequenceiq.cloudbreak.api.endpoint.v4.database.base.DatabaseV4Base;
-import com.sequenceiq.cloudbreak.api.endpoint.v4.database.responses.DatabaseV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.environment.responses.SimpleEnvironmentV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.ldaps.responses.LdapV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.proxies.responses.ProxyV4Response;
 import com.sequenceiq.it.cloudbreak.exception.TestFailException;
 import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
-import com.sequenceiq.it.cloudbreak.newway.Environment;
-import com.sequenceiq.it.cloudbreak.newway.EnvironmentEntity;
-import com.sequenceiq.it.cloudbreak.newway.action.credential.CredentialTestAction;
-import com.sequenceiq.it.cloudbreak.newway.assertion.CheckEnvironmentCredential;
-import com.sequenceiq.it.cloudbreak.newway.context.MockedTestContext;
+import com.sequenceiq.it.cloudbreak.newway.assertion.environment.EnvironmentTestAssertion;
+import com.sequenceiq.it.cloudbreak.newway.client.CredentialTestClient;
+import com.sequenceiq.it.cloudbreak.newway.client.EnvironmentTestClient;
+import com.sequenceiq.it.cloudbreak.newway.context.Description;
 import com.sequenceiq.it.cloudbreak.newway.context.TestContext;
-import com.sequenceiq.it.cloudbreak.newway.entity.CloudbreakEntity;
-import com.sequenceiq.it.cloudbreak.newway.entity.credential.CredentialTestDto;
-import com.sequenceiq.it.cloudbreak.newway.entity.database.DatabaseEntity;
-import com.sequenceiq.it.cloudbreak.newway.entity.ldap.LdapConfigTestDto;
-import com.sequenceiq.it.cloudbreak.newway.entity.proxy.ProxyConfigEntity;
+import com.sequenceiq.it.cloudbreak.newway.dto.credential.CredentialTestDto;
+import com.sequenceiq.it.cloudbreak.newway.dto.database.DatabaseTestDto;
+import com.sequenceiq.it.cloudbreak.newway.dto.environment.EnvironmentTestDto;
+import com.sequenceiq.it.cloudbreak.newway.dto.ldap.LdapTestDto;
+import com.sequenceiq.it.cloudbreak.newway.dto.proxy.ProxyTestDto;
 import com.sequenceiq.it.cloudbreak.newway.testcase.AbstractIntegrationTest;
+import com.sequenceiq.it.cloudbreak.newway.util.EnvironmentTestUtils;
 
 public class EnvironmentTest extends AbstractIntegrationTest {
-    private static final String FORBIDDEN_KEY = "forbiddenPost";
 
     private static final Set<String> INVALID_REGION = new HashSet<>(Collections.singletonList("MockRegion"));
 
@@ -53,508 +49,663 @@ public class EnvironmentTest extends AbstractIntegrationTest {
 
     private Set<String> mixedRds = new HashSet<>();
 
-    @BeforeMethod
-    public void beforeMethod(Object[] data) {
-        MockedTestContext testContext = (MockedTestContext) data[0];
+    @Inject
+    private CredentialTestClient credentialTestClient;
+
+    @Inject
+    private EnvironmentTestClient environmentTestClient;
+
+    @Override
+    protected void setupTest(TestContext testContext) {
         createDefaultUser(testContext);
         createDefaultCredential(testContext);
-        initializeDefaultClusterDefinitions(testContext);
-    }
-
-    @AfterMethod(alwaysRun = true)
-    public void tearDown(Object[] data) {
-        ((MockedTestContext) data[0]).cleanupTestContextEntity();
+        initializeDefaultBlueprints(testContext);
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is a running cloudbreak",
+            when = "valid create environment request is sent",
+            then = "environment should be created")
     public void testCreateEnvironment(TestContext testContext) {
         testContext
-                .given(EnvironmentEntity.class)
-                .when(Environment::post)
-                .then(EnvironmentTest::checkCredentialAttachedToEnv)
-                .when(Environment::getAll)
-                .then(EnvironmentTest::checkEnvIsListed)
+                .given(EnvironmentTestDto.class)
+                .when(environmentTestClient.createV4())
+                .then(this::checkCredentialAttachedToEnv)
+                .when(environmentTestClient.listV4())
+                .then(this::checkEnvIsListed)
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is a running cloudbreak",
+            when = "valid create environment request is sent with attached proxy config in it",
+            then = "environment should be created and the proxy should be attached")
     public void testCreateEnvironmenWithProxy(TestContext testContext) {
         createDefaultProxyConfig(testContext);
         Set<String> validProxy = new HashSet<>();
-        validProxy.add(testContext.get(ProxyConfigEntity.class).getName());
+        validProxy.add(testContext.get(ProxyTestDto.class).getName());
         testContext
-                .given(EnvironmentEntity.class)
+                .given(EnvironmentTestDto.class)
                 .withProxyConfigs(validProxy)
-                .when(Environment::post)
-                .then(EnvironmentTest::checkCredentialAttachedToEnv)
-                .when(Environment::getAll)
-                .then(EnvironmentTest::checkEnvIsListed)
+                .when(environmentTestClient.createV4())
+                .then(this::checkCredentialAttachedToEnv)
+                .when(environmentTestClient.listV4())
+                .then(this::checkEnvIsListed)
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is a running cloudbreak",
+            when = "valid create environment request is sent with attached ldap config in it",
+            then = "environment should be created and the ldap should be attached")
     public void testCreateEnvironmenWithLdap(TestContext testContext) {
         createDefaultLdapConfig(testContext);
         Set<String> validLdap = new HashSet<>();
-        validLdap.add(testContext.get(LdapConfigTestDto.class).getName());
+        validLdap.add(testContext.get(LdapTestDto.class).getName());
         testContext
-                .given(EnvironmentEntity.class)
+                .given(EnvironmentTestDto.class)
                 .withLdapConfigs(validLdap)
-                .when(Environment::post)
-                .then(EnvironmentTest::checkCredentialAttachedToEnv)
-                .when(Environment::getAll)
-                .then(EnvironmentTest::checkEnvIsListed)
+                .when(environmentTestClient.createV4())
+                .then(this::checkCredentialAttachedToEnv)
+                .when(environmentTestClient.listV4())
+                .then(this::checkEnvIsListed)
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
-    public void testCreateEnvironmenWithRds(TestContext testContext) {
+    @Description(
+            given = "there is a running cloudbreak",
+            when = "valid create environment request is sent with attached database config in it",
+            then = "environment should be created and the database should be attached")
+    public void testCreateEnvironmenWithDatabase(TestContext testContext) {
         createDefaultRdsConfig(testContext);
         Set<String> validRds = new HashSet<>();
-        validRds.add(testContext.get(DatabaseEntity.class).getName());
+        validRds.add(testContext.get(DatabaseTestDto.class).getName());
         testContext
-                .given(EnvironmentEntity.class)
+                .given(EnvironmentTestDto.class)
                 .withRdsConfigs(validRds)
-                .when(Environment::post)
-                .then(EnvironmentTest::checkCredentialAttachedToEnv)
-                .when(Environment::getAll)
-                .then(EnvironmentTest::checkEnvIsListed)
+                .when(environmentTestClient.createV4())
+                .then(this::checkCredentialAttachedToEnv)
+                .when(environmentTestClient.listV4())
+                .then(this::checkEnvIsListed)
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is a running cloudbreak",
+            when = "a create environment request is sent with an invalid region in it",
+            then = "a BadRequestException should be returned")
     public void testCreateEnvironmentInvalidRegion(TestContext testContext) {
+        String forbiddenKey = resourcePropertyProvider().getName();
         testContext
-                .init(EnvironmentEntity.class)
+                .init(EnvironmentTestDto.class)
                 .withRegions(INVALID_REGION)
-                .when(Environment::post, key(FORBIDDEN_KEY))
-                .expect(BadRequestException.class, key(FORBIDDEN_KEY))
+                .when(environmentTestClient.createV4(), key(forbiddenKey))
+                .expect(BadRequestException.class, key(forbiddenKey))
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is a running cloudbreak",
+            when = "a create environment request is sent with no region in it",
+            then = "a BadRequestException should be returned")
     public void testCreateEnvironmentNoRegion(TestContext testContext) {
+        String forbiddenKey = resourcePropertyProvider().getName();
         testContext
-                .init(EnvironmentEntity.class)
+                .init(EnvironmentTestDto.class)
                 .withRegions(null)
-                .when(Environment::post, key(FORBIDDEN_KEY))
-                .expect(BadRequestException.class, key(FORBIDDEN_KEY))
+                .when(environmentTestClient.createV4(), key(forbiddenKey))
+                .expect(BadRequestException.class, key(forbiddenKey))
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is a running cloudbreak",
+            when = "a create environment request with reference to a non-existing credential is sent",
+            then = "a BadRequestException should be returned")
     public void testCreateEnvironmentNotExistCredential(TestContext testContext) {
+        String forbiddenKey = resourcePropertyProvider().getName();
         testContext
-                .init(EnvironmentEntity.class)
+                .init(EnvironmentTestDto.class)
                 .withCredentialName("notexistingcredendital")
-                .when(Environment::post, key(FORBIDDEN_KEY))
-                .expect(BadRequestException.class, key(FORBIDDEN_KEY))
+                .when(environmentTestClient.createV4(), key(forbiddenKey))
+                .expect(BadRequestException.class, key(forbiddenKey))
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is a running cloudbreak",
+            when = "a create environment request with reference to a non-existing proxy is sent",
+            then = "a BadRequestException should be returned")
     public void testCreateEnvironmentNotExistProxy(TestContext testContext) {
+        String forbiddenKey = resourcePropertyProvider().getName();
         testContext
-                .init(EnvironmentEntity.class)
+                .init(EnvironmentTestDto.class)
                 .withProxyConfigs(INVALID_PROXY)
-                .when(Environment::post, key(FORBIDDEN_KEY))
-                .expect(BadRequestException.class, key(FORBIDDEN_KEY))
+                .when(environmentTestClient.createV4(), key(forbiddenKey))
+                .expect(BadRequestException.class, key(forbiddenKey))
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is a running cloudbreak",
+            when = "a create environment request with reference to a non-existing ldap is sent",
+            then = "a BadRequestException should be returned")
     public void testCreateEnvironmentNotExistLdap(TestContext testContext) {
+        String forbiddenKey = resourcePropertyProvider().getName();
         testContext
-                .init(EnvironmentEntity.class)
+                .init(EnvironmentTestDto.class)
                 .withLdapConfigs(INVALID_LDAP)
-                .when(Environment::post, key(FORBIDDEN_KEY))
-                .expect(BadRequestException.class, key(FORBIDDEN_KEY))
+                .when(environmentTestClient.createV4(), key(forbiddenKey))
+                .expect(BadRequestException.class, key(forbiddenKey))
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is a running cloudbreak",
+            when = "a create environment request with reference to a non-existing ldap is sent",
+            then = "a BadRequestException should be returned")
     public void testCreateEnvironmentNotExistRds(TestContext testContext) {
+        String forbiddenKey = resourcePropertyProvider().getName();
         testContext
-                .init(EnvironmentEntity.class)
+                .init(EnvironmentTestDto.class)
                 .withRdsConfigs(INVALID_RDS)
-                .when(Environment::post, key(FORBIDDEN_KEY))
-                .expect(BadRequestException.class, key(FORBIDDEN_KEY))
+                .when(environmentTestClient.createV4(), key(forbiddenKey))
+                .expect(BadRequestException.class, key(forbiddenKey))
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
-    public void testCreateEnvWithExistingAndNotExistingRds(TestContext testContext) {
-        createDefaultRdsConfig(testContext);
-        mixedRds.add(testContext.get(DatabaseEntity.class).getName());
-        mixedRds.add("invalidRds");
-        testContext
-                .init(EnvironmentEntity.class)
-                .withRdsConfigs(mixedRds)
-                .when(Environment::post, key(FORBIDDEN_KEY))
-                .expect(BadRequestException.class, key(FORBIDDEN_KEY))
-                .validate();
-    }
-
-    @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is a running cloudbreak",
+            when = "a create environment request with reference to an existing and a non-existing proxy is sent",
+            then = "a BadRequestException should be returned")
     public void testCreateEnvWithExistingAndNotExistingProxy(TestContext testContext) {
+        String forbiddenKey = resourcePropertyProvider().getName();
         createDefaultProxyConfig(testContext);
-        mixedProxy.add(testContext.get(ProxyConfigEntity.class).getName());
+        mixedProxy.add(testContext.get(ProxyTestDto.class).getName());
         mixedProxy.add("invalidProxy");
         testContext
-                .init(EnvironmentEntity.class)
+                .init(EnvironmentTestDto.class)
                 .withProxyConfigs(mixedProxy)
-                .when(Environment::post, key(FORBIDDEN_KEY))
-                .expect(BadRequestException.class, key(FORBIDDEN_KEY))
+                .when(environmentTestClient.createV4(), key(forbiddenKey))
+                .expect(BadRequestException.class, key(forbiddenKey))
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is a running cloudbreak",
+            when = "a create environment request with reference to an existing and a non-existing database is sent",
+            then = "a BadRequestException should be returned")
+    public void testCreateEnvWithExistingAndNotExistingRds(TestContext testContext) {
+        String forbiddenKey = resourcePropertyProvider().getName();
+        createDefaultRdsConfig(testContext);
+        mixedRds.add(testContext.get(DatabaseTestDto.class).getName());
+        mixedRds.add("invalidRds");
+        testContext
+                .init(EnvironmentTestDto.class)
+                .withRdsConfigs(mixedRds)
+                .when(environmentTestClient.createV4(), key(forbiddenKey))
+                .expect(BadRequestException.class, key(forbiddenKey))
+                .validate();
+    }
+
+    @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is a running cloudbreak",
+            when = "a create environment request with reference to an existing and a non-existing ldap is sent",
+            then = "a BadRequestException should be returned")
     public void testCreateEnvWithExistingAndNotExistingLdap(TestContext testContext) {
+        String forbiddenKey = resourcePropertyProvider().getName();
         createDefaultLdapConfig(testContext);
-        mixedLdap.add(testContext.get(LdapConfigTestDto.class).getName());
+        mixedLdap.add(testContext.get(LdapTestDto.class).getName());
         mixedLdap.add("invalidLdap");
         testContext
-                .init(EnvironmentEntity.class)
+                .init(EnvironmentTestDto.class)
                 .withLdapConfigs(mixedLdap)
-                .when(Environment::post, key(FORBIDDEN_KEY))
-                .expect(BadRequestException.class, key(FORBIDDEN_KEY))
+                .when(environmentTestClient.createV4(), key(forbiddenKey))
+                .expect(BadRequestException.class, key(forbiddenKey))
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is an available environment",
+            when = "a delete request is sent for the environment",
+            then = "the environment should be deleted")
     public void testDeleteEnvironment(TestContext testContext) {
         testContext
-                .init(EnvironmentEntity.class)
-                .when(Environment::post)
-                .then(EnvironmentTest::checkCredentialAttachedToEnv)
-                .when(Environment::getAll)
-                .then(EnvironmentTest::checkEnvIsListed)
-                .when(Environment::delete)
+                .init(EnvironmentTestDto.class)
+                .when(environmentTestClient.createV4())
+                .then(this::checkCredentialAttachedToEnv)
+                .when(environmentTestClient.listV4())
+                .then(this::checkEnvIsListed)
+                .when(environmentTestClient.deleteV4())
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is an available environment with an attached proxy",
+            when = "a delete request is sent for the environment",
+            then = "the environment should be deleted")
     public void testDeleteEnvWithProxy(TestContext testContext) {
         createDefaultProxyConfig(testContext);
         Set<String> validProxy = new HashSet<>();
-        validProxy.add(testContext.get(ProxyConfigEntity.class).getName());
+        validProxy.add(testContext.get(ProxyTestDto.class).getName());
         testContext
-                .init(EnvironmentEntity.class)
+                .init(EnvironmentTestDto.class)
                 .withProxyConfigs(validProxy)
-                .when(Environment::post)
-                .then(EnvironmentTest::checkCredentialAttachedToEnv)
-                .when(Environment::getAll)
-                .then(EnvironmentTest::checkEnvIsListed)
-                .when(Environment::delete)
+                .when(environmentTestClient.createV4())
+                .then(this::checkCredentialAttachedToEnv)
+                .when(environmentTestClient.listV4())
+                .then(this::checkEnvIsListed)
+                .when(environmentTestClient.deleteV4())
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is an available environment with an attached ldap",
+            when = "a delete request is sent for the environment",
+            then = "the environment should be deleted")
     public void testDeleteEnvWithLdap(TestContext testContext) {
         createDefaultLdapConfig(testContext);
         Set<String> validLdap = new HashSet<>();
-        validLdap.add(testContext.get(LdapConfigTestDto.class).getName());
+        validLdap.add(testContext.get(LdapTestDto.class).getName());
         testContext
-                .init(EnvironmentEntity.class)
+                .init(EnvironmentTestDto.class)
                 .withLdapConfigs(validLdap)
-                .when(Environment::post)
-                .then(EnvironmentTest::checkCredentialAttachedToEnv)
-                .when(Environment::getAll)
-                .then(EnvironmentTest::checkEnvIsListed)
-                .when(Environment::delete)
+                .when(environmentTestClient.createV4())
+                .then(this::checkCredentialAttachedToEnv)
+                .when(environmentTestClient.listV4())
+                .then(this::checkEnvIsListed)
+                .when(environmentTestClient.deleteV4())
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is an available environment with an attached database",
+            when = "a delete request is sent for the environment",
+            then = "the environment should be deleted")
     public void testDeleteEnvWithRds(TestContext testContext) {
         createDefaultRdsConfig(testContext);
         Set<String> validRds = new HashSet<>();
-        validRds.add(testContext.get(DatabaseEntity.class).getName());
+        validRds.add(testContext.get(DatabaseTestDto.class).getName());
         testContext
-                .init(EnvironmentEntity.class)
+                .init(EnvironmentTestDto.class)
                 .withRdsConfigs(validRds)
-                .when(Environment::post)
-                .then(EnvironmentTest::checkCredentialAttachedToEnv)
-                .when(Environment::getAll)
-                .then(EnvironmentTest::checkEnvIsListed)
-                .when(Environment::delete)
+                .when(environmentTestClient.createV4())
+                .then(this::checkCredentialAttachedToEnv)
+                .when(environmentTestClient.listV4())
+                .then(this::checkEnvIsListed)
+                .when(environmentTestClient.deleteV4())
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is a running cloudbreak",
+            when = "a delete request is sent for a non-existing environment",
+            then = "a ForbiddenException should be returned")
     public void testDeleteEnvironmentNotExist(TestContext testContext) {
+        String forbiddenKey = resourcePropertyProvider().getName();
         testContext
-                .init(EnvironmentEntity.class)
-                .when(Environment::delete, key(FORBIDDEN_KEY))
-                .expect(ForbiddenException.class, key(FORBIDDEN_KEY))
+                .init(EnvironmentTestDto.class)
+                .when(environmentTestClient.deleteV4(), key(forbiddenKey))
+                .expect(ForbiddenException.class, key(forbiddenKey))
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is an available environment",
+            when = "an rds attach request is sent for that environment",
+            then = "the rds should be attached to the environment")
     public void testCreateEnvAttachRds(TestContext testContext) {
         createDefaultRdsConfig(testContext);
         Set<String> validRds = new HashSet<>();
-        validRds.add(testContext.get(DatabaseEntity.class).getName());
+        validRds.add(testContext.get(DatabaseTestDto.class).getName());
         testContext
-                .given(EnvironmentEntity.class)
-                .withName("int-rds-attach")
-                .when(Environment::post)
-                .when(Environment::getAll)
-                .given(EnvironmentEntity.class)
+                .given(EnvironmentTestDto.class)
+                .when(environmentTestClient.createV4())
+                .when(environmentTestClient.listV4())
+                .given(EnvironmentTestDto.class)
                 .withRdsConfigs(validRds)
-                .when(Environment::putAttachResources)
-                .then(EnvironmentTest::checkRdsAttachedToEnv)
+                .when(environmentTestClient.attachV4())
+                .then(EnvironmentTestUtils::checkRdsAttachedToEnv)
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is an available environment",
+            when = "an ldap attach request is sent for that environment",
+            then = "the ldap should be attached to the environment")
     public void testCreateEnvAttachLdap(TestContext testContext) {
+        String env = resourcePropertyProvider().getName();
         createDefaultLdapConfig(testContext);
         Set<String> validLdap = new HashSet<>();
-        validLdap.add(testContext.get(LdapConfigTestDto.class).getName());
+        validLdap.add(testContext.get(LdapTestDto.class).getName());
         testContext
-                .given(EnvironmentEntity.class)
-                .withName("int-ldap-attach")
-                .when(Environment::post)
-                .given(EnvironmentEntity.class)
+                .given(EnvironmentTestDto.class)
+                .withName(env)
+                .when(environmentTestClient.createV4())
+                .given(EnvironmentTestDto.class)
                 .withLdapConfigs(validLdap)
-                .when(Environment::putAttachResources)
-                .then(EnvironmentTest::checkLdapAttachedToEnv)
+                .when(environmentTestClient.attachV4())
+                .then(this::checkLdapAttachedToEnv)
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is an available environment",
+            when = "an proxy attach request is sent for that environment",
+            then = "the proxy should be attached to the environment")
     public void testCreateEnvAttachProxy(TestContext testContext) {
+        String env = resourcePropertyProvider().getName();
         createDefaultProxyConfig(testContext);
         Set<String> validProxy = new HashSet<>();
-        validProxy.add(testContext.get(ProxyConfigEntity.class).getName());
+        validProxy.add(testContext.get(ProxyTestDto.class).getName());
         testContext
-                .given(EnvironmentEntity.class)
-                .withName("int-proxy-attach")
-                .when(Environment::post)
-                .given(EnvironmentEntity.class)
+                .given(EnvironmentTestDto.class)
+                .withName(env)
+                .when(environmentTestClient.createV4())
+                .given(EnvironmentTestDto.class)
                 .withProxyConfigs(validProxy)
-                .when(Environment::putAttachResources)
-                .then(EnvironmentTest::checkProxyAttachedToEnv)
+                .when(environmentTestClient.attachV4())
+                .then(this::checkProxyAttachedToEnv)
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is an available environment with an attached rds config",
+            when = "an rds detach request is sent for that environment and rds config",
+            then = "the rds config should be detached from the environment")
     public void testCreateEnvDetachRds(TestContext testContext) {
+        String env = resourcePropertyProvider().getName();
         createDefaultRdsConfig(testContext);
         Set<String> validRds = new HashSet<>();
-        validRds.add(testContext.get(DatabaseEntity.class).getName());
+        validRds.add(testContext.get(DatabaseTestDto.class).getName());
         testContext
-                .given(EnvironmentEntity.class)
-                .withName("int-rds-detach")
-                .when(Environment::post)
-                .when(Environment::getAll)
-                .given(EnvironmentEntity.class)
+                .given(EnvironmentTestDto.class)
+                .withName(env)
+                .when(environmentTestClient.createV4())
+                .when(environmentTestClient.listV4())
+                .given(EnvironmentTestDto.class)
                 .withRdsConfigs(validRds)
-                .when(Environment::putAttachResources)
-                .then(EnvironmentTest::checkRdsAttachedToEnv)
-                .when(Environment::putDetachResources)
+                .when(environmentTestClient.attachV4())
+                .then(EnvironmentTestUtils::checkRdsAttachedToEnv)
+                .when(environmentTestClient.detachV4())
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is an available environment with an attached ldap config",
+            when = "an ldap detach request is sent for that environment and ldap config",
+            then = "the ldap config should be detached from the environment")
     public void testCreateEnvDetachLdap(TestContext testContext) {
+        String env = resourcePropertyProvider().getName();
         createDefaultLdapConfig(testContext);
         Set<String> validLdap = new HashSet<>();
-        validLdap.add(testContext.get(LdapConfigTestDto.class).getName());
+        validLdap.add(testContext.get(LdapTestDto.class).getName());
         testContext
-                .given(EnvironmentEntity.class)
-                .withName("int-ldap-detach")
-                .when(Environment::post)
-                .when(Environment::getAll)
-                .given(EnvironmentEntity.class)
+                .given(EnvironmentTestDto.class)
+                .withName(env)
+                .when(environmentTestClient.createV4())
+                .when(environmentTestClient.listV4())
+                .given(EnvironmentTestDto.class)
                 .withLdapConfigs(validLdap)
-                .when(Environment::putAttachResources)
-                .then(EnvironmentTest::checkLdapAttachedToEnv)
-                .when(Environment::putDetachResources)
+                .when(environmentTestClient.attachV4())
+                .then(this::checkLdapAttachedToEnv)
+                .when(environmentTestClient.detachV4())
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is an available environment with an attached proxy config",
+            when = "an proxy detach request is sent for that environment and proxy config",
+            then = "the proxy config should be detached from the environment")
     public void testCreateEnvDetachProxy(TestContext testContext) {
+        String env = resourcePropertyProvider().getName();
         createDefaultProxyConfig(testContext);
         Set<String> validProxy = new HashSet<>();
-        validProxy.add(testContext.get(ProxyConfigEntity.class).getName());
+        validProxy.add(testContext.get(ProxyTestDto.class).getName());
         testContext
-                .given(EnvironmentEntity.class)
-                .withName("int-proxy-detach")
-                .when(Environment::post)
-                .when(Environment::getAll)
-                .given(EnvironmentEntity.class)
+                .given(EnvironmentTestDto.class)
+                .withName(env)
+                .when(environmentTestClient.createV4())
+                .when(environmentTestClient.listV4())
+                .given(EnvironmentTestDto.class)
                 .withProxyConfigs(validProxy)
-                .when(Environment::putAttachResources)
-                .then(EnvironmentTest::checkProxyAttachedToEnv)
-                .when(Environment::putDetachResources)
+                .when(environmentTestClient.attachV4())
+                .then(this::checkProxyAttachedToEnv)
+                .when(environmentTestClient.detachV4())
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there are two available environments and an rds config",
+            when = "an rds attach requests sent for each of the environments",
+            then = "rds should be attached to both environments")
     public void testAttachRdsToMoreEnvs(TestContext testContext) {
+        String env1 = resourcePropertyProvider().getName();
+        String env2 = resourcePropertyProvider().getName();
         createDefaultRdsConfig(testContext);
         Set<String> validRds = new HashSet<>();
-        validRds.add(testContext.get(DatabaseEntity.class).getName());
-        attachRdsToEnv(testContext, "int-rds-attach-envs", validRds);
-        attachRdsToEnv(testContext, "int-rds-attach-envs2", validRds);
+        validRds.add(testContext.get(DatabaseTestDto.class).getName());
+        attachRdsToEnv(testContext, env1, validRds);
+        attachRdsToEnv(testContext, env2, validRds);
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there are two available environments and an ldap config",
+            when = "an ldap attach requests sent for each of the environments",
+            then = "ldap should be attached to both environments")
     public void testAttachLdapToMoreEnvs(TestContext testContext) {
+        String env1 = resourcePropertyProvider().getName();
+        String env2 = resourcePropertyProvider().getName();
         createDefaultLdapConfig(testContext);
         Set<String> validLdap = new HashSet<>();
-        validLdap.add(testContext.get(LdapConfigTestDto.class).getName());
-        attachLdapToEnv(testContext, "int-ldap-attach-envs", validLdap);
-        attachLdapToEnv(testContext, "int-ldap-attach-envs2", validLdap);
+        validLdap.add(testContext.get(LdapTestDto.class).getName());
+        attachLdapToEnv(testContext, env1, validLdap);
+        attachLdapToEnv(testContext, env2, validLdap);
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there are two available environments and an proxy config",
+            when = "an proxy attach requests sent for each of the environments",
+            then = "proxy should be attached to both environments")
     public void testAttachProxyToMoreEnvs(TestContext testContext) {
+        String env1 = resourcePropertyProvider().getName();
+        String env2 = resourcePropertyProvider().getName();
         createDefaultProxyConfig(testContext);
         Set<String> validProxy = new HashSet<>();
-        validProxy.add(testContext.get(ProxyConfigEntity.class).getName());
-        attachProxyToEnv(testContext, "int-proxy-attach-envs", validProxy);
-        attachProxyToEnv(testContext, "int-proxy-attach-envs2", validProxy);
+        validProxy.add(testContext.get(ProxyTestDto.class).getName());
+        attachProxyToEnv(testContext, env1, validProxy);
+        attachProxyToEnv(testContext, env2, validProxy);
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
-    public void testAttachRdsToNotExistEnv(TestContext testContext) {
+    @Description(
+            given = "there is an rds config",
+            when = "an rds config attach request is sent for a non-existing environment",
+            then = "a ForbiddenException should be returned")
+    public void testAttachRdsToNonExistingEnv(TestContext testContext) {
+        String env = resourcePropertyProvider().getName();
+        String forbiddenKey = resourcePropertyProvider().getName();
         createDefaultRdsConfig(testContext);
         Set<String> validRds = new HashSet<>();
-        validRds.add(testContext.get(DatabaseEntity.class).getName());
+        validRds.add(testContext.get(DatabaseTestDto.class).getName());
         testContext
-                .init(EnvironmentEntity.class)
-                .withName("int-no-env")
+                .init(EnvironmentTestDto.class)
+                .withName(env)
                 .withRdsConfigs(validRds)
-                .when(Environment::putAttachResources, key(FORBIDDEN_KEY))
-                .expect(ForbiddenException.class, key(FORBIDDEN_KEY))
+                .when(environmentTestClient.attachV4(), key(forbiddenKey))
+                .expect(ForbiddenException.class, key(forbiddenKey))
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
-    public void testRdsAttachDetachOther(TestContext testContext) {
+    @Description(
+            given = "there az environment with an attached rds config",
+            when = "when an rds detach request is sent for that environment but with a different rds config name",
+            then = "nothing should happen with the environment")
+    public void testAttachAnRdsThenDetachAnotherOther(TestContext testContext) {
+        String notExistingRds = resourcePropertyProvider().getName();
+        String rds1 = resourcePropertyProvider().getName();
         createDefaultRdsConfig(testContext);
         Set<String> validRds = new HashSet<>();
         Set<String> notValidRds = new HashSet<>();
-        validRds.add(testContext.get(DatabaseEntity.class).getName());
-        notValidRds.add("not-existing-rds");
+        validRds.add(testContext.get(DatabaseTestDto.class).getName());
+        notValidRds.add(notExistingRds);
         testContext
-                .given(EnvironmentEntity.class)
-                .withName("int-rds-attach-1")
-                .when(Environment::post)
-                .when(Environment::getAll)
-                .given(EnvironmentEntity.class)
+                .given(EnvironmentTestDto.class)
+                .withName(rds1)
+                .when(environmentTestClient.createV4())
+                .when(environmentTestClient.listV4())
+                .given(EnvironmentTestDto.class)
                 .withRdsConfigs(validRds)
-                .when(Environment::putAttachResources)
-                .then(EnvironmentTest::checkRdsAttachedToEnv)
-                .given(EnvironmentEntity.class)
-                .withName("int-rds-attach-1")
+                .when(environmentTestClient.attachV4())
+                .then(EnvironmentTestUtils::checkRdsAttachedToEnv)
+                .given(EnvironmentTestDto.class)
+                .withName(rds1)
                 .withRdsConfigs(notValidRds)
-                .when(Environment::putDetachResources)
+                .when(environmentTestClient.detachV4())
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is an available environment",
+            when = "a modifyV4 credential request (with cred name) is sent for the environment",
+            then = "the credential should change to the new credential in the environment")
     public void testCreateEnvironmentChangeCredWithCredName(TestContext testContext) {
+        String cred1 = resourcePropertyProvider().getName();
         testContext
-                .given(EnvironmentEntity.class)
-                .when(Environment::post)
-
-                .given("int-env-change-cred", CredentialTestDto.class)
-                .withName("int-env-change-cred")
-                .when(CredentialTestAction::create)
-
-                .given(EnvironmentEntity.class)
-                .withCredentialName("int-env-change-cred")
-                .then(Environment::changeCredential)
-                .then(new CheckEnvironmentCredential("int-env-change-cred"))
+                .given(EnvironmentTestDto.class)
+                .when(environmentTestClient.createV4())
+                .given(cred1, CredentialTestDto.class)
+                .withName(cred1)
+                .when(credentialTestClient.createV4())
+                .given(EnvironmentTestDto.class)
+                .withCredentialName(cred1)
+                .when(environmentTestClient.changeCredential())
+                .then(new EnvironmentTestAssertion(cred1))
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is an available environment",
+            when = "a modifyV4 credential request (with cred request) is sent for the environment",
+            then = "the credential should change to the new credential in the environment")
     public void testCreateEnvironmentChangeCredWithCredRequest(TestContext testContext) {
+        String cred1 = resourcePropertyProvider().getName();
         testContext
-                .given(EnvironmentEntity.class)
-                .when(Environment::post)
-
-                .given("int-change-cred", CredentialTestDto.class)
-                .withName("int-change-cred")
-
-                .given(EnvironmentEntity.class)
+                .given(EnvironmentTestDto.class)
+                .when(environmentTestClient.createV4())
+                .given(cred1, CredentialTestDto.class)
+                .withName(cred1)
+                .given(EnvironmentTestDto.class)
                 .withCredentialName(null)
-                .withCredential("int-change-cred")
-                .then(Environment::changeCredential)
-                .then(new CheckEnvironmentCredential("int-change-cred"))
+                .withCredential(cred1)
+                .when(environmentTestClient.changeCredential())
+                .then(new EnvironmentTestAssertion(cred1))
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
+    @Description(
+            given = "there is an available environment",
+            when = "a modifyV4 credential request is sent for the environment with the same credential",
+            then = "the credential should not change in the environment")
     public void testCreateEnvironmentChangeCredForSame(TestContext testContext) {
         testContext
-                .given(EnvironmentEntity.class)
-                .when(Environment::post)
+                .given(EnvironmentTestDto.class)
+                .when(environmentTestClient.createV4())
                 .withCredentialName(testContext.get(CredentialTestDto.class).getName())
-                .then(Environment::changeCredential)
-                .then(EnvironmentTest::checkCredentialAttachedToEnv)
+                .when(environmentTestClient.changeCredential())
+                .then(this::checkCredentialAttachedToEnv)
                 .validate();
     }
 
     @Test(dataProvider = TEST_CONTEXT_WITH_MOCK)
-    public void testCreateEnvironmentChangeCredNotExistingName(TestContext testContext) {
+    @Description(
+            given = "there is an available environment",
+            when = "a modifyV4 credential request is sent for the environment with a non-existing credential",
+            then = "a ForbiddenException should be returned")
+    public void testCreateEnvironmentChangeCredNonExistingName(TestContext testContext) {
+        String notExistingCred = resourcePropertyProvider().getName();
+        String forbiddenKey = resourcePropertyProvider().getName();
         testContext
-                .given(EnvironmentEntity.class)
-                .when(Environment::post)
-
-                .given(EnvironmentEntity.class)
-                .withCredentialName("not-existing-cred")
-                .then(Environment::changeCredential, key(FORBIDDEN_KEY))
-                .expect(ForbiddenException.class, key(FORBIDDEN_KEY))
+                .given(EnvironmentTestDto.class)
+                .when(environmentTestClient.createV4())
+                .given(EnvironmentTestDto.class)
+                .withCredentialName(notExistingCred)
+                .when(environmentTestClient.changeCredential(), key(forbiddenKey))
+                .expect(ForbiddenException.class, key(forbiddenKey))
                 .validate();
     }
 
-    private static void attachRdsToEnv(TestContext testContext, String name, Set<String> validRds) {
+    private void attachRdsToEnv(TestContext testContext, String envName, Set<String> validRds) {
         testContext
-                .given(name, EnvironmentEntity.class)
-                .withName(name)
-                .when(Environment::post)
+                .given(envName, EnvironmentTestDto.class)
+                .withName(envName)
+                .when(environmentTestClient.createV4())
 
-                .given(name, EnvironmentEntity.class)
+                .given(envName, EnvironmentTestDto.class)
                 .withRdsConfigs(validRds)
-                .when(Environment::putAttachResources)
-                .then(EnvironmentTest::checkRdsAttachedToEnv)
+                .when(environmentTestClient.attachV4())
+                .then(EnvironmentTestUtils::checkRdsAttachedToEnv)
                 .validate();
     }
 
-    private static void attachLdapToEnv(TestContext testContext, String name, Set<String> validLdap) {
+    private void attachLdapToEnv(TestContext testContext, String envName, Set<String> validLdap) {
         testContext
-                .given(name, EnvironmentEntity.class)
-                .withName(name)
-                .when(Environment::post)
+                .given(envName, EnvironmentTestDto.class)
+                .withName(envName)
+                .when(environmentTestClient.createV4())
 
-                .given(name, EnvironmentEntity.class)
+                .given(envName, EnvironmentTestDto.class)
                 .withLdapConfigs(validLdap)
-                .when(Environment::putAttachResources)
-                .then(EnvironmentTest::checkLdapAttachedToEnv)
+                .when(environmentTestClient.attachV4())
+                .then(this::checkLdapAttachedToEnv)
                 .validate();
     }
 
-    private static void attachProxyToEnv(TestContext testContext, String name, Set<String> validLdap) {
+    private void attachProxyToEnv(TestContext testContext, String envName, Set<String> validLdap) {
         testContext
-                .given(name, EnvironmentEntity.class)
-                .withName(name)
-                .when(Environment::post)
+                .given(envName, EnvironmentTestDto.class)
+                .withName(envName)
+                .when(environmentTestClient.createV4())
 
-                .given(name, EnvironmentEntity.class)
+                .given(envName, EnvironmentTestDto.class)
                 .withProxyConfigs(validLdap)
-                .when(Environment::putAttachResources)
-                .then(EnvironmentTest::checkProxyAttachedToEnv)
+                .when(environmentTestClient.attachV4())
+                .then(this::checkProxyAttachedToEnv)
                 .validate();
     }
 
-    private static EnvironmentEntity checkCredentialAttachedToEnv(TestContext testContext, EnvironmentEntity environment, CloudbreakClient cloudbreakClient) {
+    private EnvironmentTestDto checkCredentialAttachedToEnv(TestContext testContext, EnvironmentTestDto environment, CloudbreakClient cloudbreakClient) {
         String credentialName = environment.getResponse().getCredentialName();
         if (!credentialName.equals(testContext.get(CredentialTestDto.class).getName())) {
             throw new TestFailException("Credential is not attached to environment");
@@ -562,66 +713,31 @@ public class EnvironmentTest extends AbstractIntegrationTest {
         return environment;
     }
 
-    static EnvironmentEntity checkRdsAttachedToEnv(TestContext testContext, EnvironmentEntity environment, CloudbreakClient cloudbreakClient) {
-        Set<String> rdsConfigs = new HashSet<>();
-        Set<DatabaseV4Response> rdsConfigResponseSet = environment.getResponse().getDatabases();
-        for (DatabaseV4Response rdsConfigResponse : rdsConfigResponseSet) {
-            rdsConfigs.add(rdsConfigResponse.getName());
-        }
-        if (!rdsConfigs.contains(testContext.get(DatabaseEntity.class).getName())) {
-            throw new TestFailException("Rds is not attached to environment");
-        }
-        return environment;
-    }
-
-    public static EnvironmentEntity checkRdsDetachedFromEnv(TestContext testContext, EnvironmentEntity environment,
-            String rdsKey, CloudbreakClient cloudbreakClient) {
-        String rdsName = testContext.get(rdsKey).getName();
-        return checkRdsDetachedFromEnv(environment, rdsName);
-    }
-
-    static <T extends CloudbreakEntity> EnvironmentEntity checkRdsDetachedFromEnv(TestContext testContext,
-            EnvironmentEntity environment, Class<T> rdsKey, CloudbreakClient cloudbreakClient) {
-        String rdsName = testContext.get(rdsKey).getName();
-        return checkRdsDetachedFromEnv(environment, rdsName);
-    }
-
-    private static EnvironmentEntity checkRdsDetachedFromEnv(EnvironmentEntity environment, String rdsName) {
-        Set<DatabaseV4Response> rdsConfigs = environment.getResponse().getDatabases();
-        boolean attached = rdsConfigs.stream().map(DatabaseV4Base::getName)
-                .anyMatch(rds -> rds.equals(rdsName));
-
-        if (attached) {
-            throw new TestFailException("Rds is attached to environment");
-        }
-        return environment;
-    }
-
-    private static EnvironmentEntity checkLdapAttachedToEnv(TestContext testContext, EnvironmentEntity environment, CloudbreakClient cloudbreakClient) {
+    private EnvironmentTestDto checkLdapAttachedToEnv(TestContext testContext, EnvironmentTestDto environment, CloudbreakClient cloudbreakClient) {
         Set<String> ldapConfigs = new HashSet<>();
         Set<LdapV4Response> ldapV4ResponseSet = environment.getResponse().getLdaps();
         for (LdapV4Response ldapV4Response : ldapV4ResponseSet) {
             ldapConfigs.add(ldapV4Response.getName());
         }
-        if (!ldapConfigs.contains(testContext.get(LdapConfigTestDto.class).getName())) {
+        if (!ldapConfigs.contains(testContext.get(LdapTestDto.class).getName())) {
             throw new TestFailException("Ldap is not attached to environment");
         }
         return environment;
     }
 
-    private static EnvironmentEntity checkProxyAttachedToEnv(TestContext testContext, EnvironmentEntity environment, CloudbreakClient cloudbreakClient) {
+    private EnvironmentTestDto checkProxyAttachedToEnv(TestContext testContext, EnvironmentTestDto environment, CloudbreakClient cloudbreakClient) {
         Set<String> proxyConfigs = new HashSet<>();
         Set<ProxyV4Response> proxyV4ResponseSet = environment.getResponse().getProxies();
         for (ProxyV4Response proxyV4Response : proxyV4ResponseSet) {
             proxyConfigs.add(proxyV4Response.getName());
         }
-        if (!proxyConfigs.contains(testContext.get(ProxyConfigEntity.class).getName())) {
+        if (!proxyConfigs.contains(testContext.get(ProxyTestDto.class).getName())) {
             throw new TestFailException("Proxy is not attached to environment");
         }
         return environment;
     }
 
-    private static EnvironmentEntity checkEnvIsListed(TestContext testContext, EnvironmentEntity environment, CloudbreakClient cloudbreakClient) {
+    private EnvironmentTestDto checkEnvIsListed(TestContext testContext, EnvironmentTestDto environment, CloudbreakClient cloudbreakClient) {
         Collection<SimpleEnvironmentV4Response> simpleEnvironmentV4Respons = environment.getResponseSimpleEnvSet();
         List<SimpleEnvironmentV4Response> result = simpleEnvironmentV4Respons.stream()
                 .filter(env -> environment.getName().equals(env.getName()))

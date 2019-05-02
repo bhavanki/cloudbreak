@@ -43,10 +43,11 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.base.RecoveryMode;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.base.SSOType;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.workspace.requests.ChangeWorkspaceUsersV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.workspace.responses.WorkspaceStatus;
+import com.sequenceiq.cloudbreak.authorization.WorkspaceRole;
 import com.sequenceiq.cloudbreak.common.model.recipe.RecipeType;
 import com.sequenceiq.cloudbreak.common.model.user.CloudbreakUser;
 import com.sequenceiq.cloudbreak.common.type.ResourceType;
-import com.sequenceiq.cloudbreak.domain.ClusterDefinition;
+import com.sequenceiq.cloudbreak.domain.Blueprint;
 import com.sequenceiq.cloudbreak.domain.Constraint;
 import com.sequenceiq.cloudbreak.domain.Credential;
 import com.sequenceiq.cloudbreak.domain.FailurePolicy;
@@ -61,7 +62,6 @@ import com.sequenceiq.cloudbreak.domain.Secret;
 import com.sequenceiq.cloudbreak.domain.SecurityConfig;
 import com.sequenceiq.cloudbreak.domain.SecurityGroup;
 import com.sequenceiq.cloudbreak.domain.SecurityRule;
-import com.sequenceiq.cloudbreak.domain.SmartSenseSubscription;
 import com.sequenceiq.cloudbreak.domain.StorageLocation;
 import com.sequenceiq.cloudbreak.domain.StorageLocations;
 import com.sequenceiq.cloudbreak.domain.Template;
@@ -80,7 +80,6 @@ import com.sequenceiq.cloudbreak.domain.view.StackStatusView;
 import com.sequenceiq.cloudbreak.domain.view.StackView;
 import com.sequenceiq.cloudbreak.domain.workspace.Tenant;
 import com.sequenceiq.cloudbreak.domain.workspace.User;
-import com.sequenceiq.cloudbreak.domain.workspace.UserWorkspacePermissions;
 import com.sequenceiq.cloudbreak.domain.workspace.Workspace;
 import com.sequenceiq.cloudbreak.structuredevent.event.LdapDetails;
 import com.sequenceiq.cloudbreak.structuredevent.event.LdapNotificationDetails;
@@ -117,11 +116,11 @@ public class TestUtil {
     }
 
     public static CloudbreakUser cbAdminUser() {
-        return new CloudbreakUser("userid", "testuser", "email", "testaccount");
+        return new CloudbreakUser("userid", "testCrn", "testuser", "email", "testaccount");
     }
 
     public static CloudbreakUser cbUser() {
-        return new CloudbreakUser("userid", "testuser", "email", "testaccount");
+        return new CloudbreakUser("userid", "testCrn", "testuser", "email", "testaccount");
     }
 
     public static Credential awsCredential() {
@@ -159,6 +158,7 @@ public class TestUtil {
     public static Stack stack(Status stackStatus, Credential credential) {
         User user = new User();
         user.setUserId("horton@hortonworks.com");
+        user.setUserCrn("testCrn");
         user.setUserName("Alma ur");
         Workspace workspace = new Workspace();
         workspace.setId(1L);
@@ -219,18 +219,10 @@ public class TestUtil {
         return user;
     }
 
-    public static UserWorkspacePermissions userWorkspacePermissions(User user, Workspace workspace, String... permissions) {
-        UserWorkspacePermissions userWorkspacePermissions = new UserWorkspacePermissions();
-        userWorkspacePermissions.setUser(user);
-        userWorkspacePermissions.setWorkspace(workspace);
-        userWorkspacePermissions.setPermissionSet(Set.of(permissions));
-        return userWorkspacePermissions;
-    }
-
-    public static ChangeWorkspaceUsersV4Request changeWorkspaceUsersJson(String userId, String... permissions) {
+    public static ChangeWorkspaceUsersV4Request changeWorkspaceUsersJson(String userId, Set<WorkspaceRole> roles) {
         ChangeWorkspaceUsersV4Request json1 = new ChangeWorkspaceUsersV4Request();
         json1.setUserId(userId);
-        json1.setPermissions(Set.of(permissions));
+        json1.setRoles(roles);
         return json1;
     }
 
@@ -393,29 +385,29 @@ public class TestUtil {
     }
 
     public static Cluster cluster() {
-        return cluster(clusterDefinition(), stack(AVAILABLE, gcpCredential()), 0L);
+        return cluster(blueprint(), stack(AVAILABLE, gcpCredential()), 0L);
     }
 
     public static List<Cluster> generateCluster(int count) {
         List<Cluster> clusters = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            clusters.add(cluster(clusterDefinition(), stack(AVAILABLE, gcpCredential()), (long) i));
+            clusters.add(cluster(blueprint(), stack(AVAILABLE, gcpCredential()), (long) i));
         }
         return clusters;
     }
 
-    public static Cluster cluster(ClusterDefinition clusterDefinition, Stack stack, Long id) {
-        return cluster(clusterDefinition, stack, id, null);
+    public static Cluster cluster(Blueprint blueprint, Stack stack, Long id) {
+        return cluster(blueprint, stack, id, null);
     }
 
-    public static Cluster cluster(ClusterDefinition clusterDefinition, Stack stack, Long id, KerberosConfig kerberosConfig) {
+    public static Cluster cluster(Blueprint blueprint, Stack stack, Long id, KerberosConfig kerberosConfig) {
         Cluster cluster = new Cluster();
         cluster.setAmbariIp("50.51.52.100");
         cluster.setStack(stack);
         cluster.setId(id);
         cluster.setName("dummyCluster");
         cluster.setAmbariIp("10.0.0.1");
-        cluster.setClusterDefinition(clusterDefinition);
+        cluster.setBlueprint(blueprint);
         cluster.setUpSince(new Date().getTime());
         cluster.setStatus(AVAILABLE);
         cluster.setStatusReason("statusReason");
@@ -484,7 +476,7 @@ public class TestUtil {
         Constraint constraint = new Constraint();
         constraint.setInstanceGroup(instanceGroup);
         hostGroup.setConstraint(constraint);
-        hostGroup.setCluster(cluster(clusterDefinition(), stack(), 1L));
+        hostGroup.setCluster(cluster(blueprint(), stack(), 1L));
         hostGroup.setRecoveryMode(RecoveryMode.MANUAL);
         return hostGroup;
     }
@@ -613,27 +605,27 @@ public class TestUtil {
         return config;
     }
 
-    public static ClusterDefinition clusterDefinition(String name) {
-        return clusterDefinition(name, "{\"host_groups\":[{\"name\":\"slave_1\",\"components\":[{\"name\":\"DATANODE\"}]}]}");
+    public static Blueprint blueprint(String name) {
+        return blueprint(name, "{\"host_groups\":[{\"name\":\"slave_1\",\"components\":[{\"name\":\"DATANODE\"}]}]}");
     }
 
-    public static ClusterDefinition clusterDefinition(Long id, String name, String clusterDefinitionText) {
-        ClusterDefinition clusterDefinition = new ClusterDefinition();
-        clusterDefinition.setId(id);
-        clusterDefinition.setClusterDefinitionText(clusterDefinitionText);
-        clusterDefinition.setName(name);
-        clusterDefinition.setStackName("multi-node-yarn");
-        clusterDefinition.setStatus(ResourceStatus.DEFAULT);
-        clusterDefinition.setTags(getEmptyJson());
-        return clusterDefinition;
+    public static Blueprint blueprint(Long id, String name, String blueprintText) {
+        Blueprint blueprint = new Blueprint();
+        blueprint.setId(id);
+        blueprint.setBlueprintText(blueprintText);
+        blueprint.setName(name);
+        blueprint.setStackName("multi-node-yarn");
+        blueprint.setStatus(ResourceStatus.DEFAULT);
+        blueprint.setTags(getEmptyJson());
+        return blueprint;
     }
 
-    public static ClusterDefinition clusterDefinition(String name, String clusterDefinitionText) {
-        return clusterDefinition(1L, name, clusterDefinitionText);
+    public static Blueprint blueprint(String name, String blueprintText) {
+        return blueprint(1L, name, blueprintText);
     }
 
-    public static ClusterDefinition clusterDefinition() {
-        return clusterDefinition("multi-node-yarn");
+    public static Blueprint blueprint() {
+        return blueprint("multi-node-yarn");
     }
 
     public static FailurePolicy failurePolicy() {
@@ -681,13 +673,6 @@ public class TestUtil {
         resource.setResourceName("testResource");
         resource.setResourceType(ResourceType.GCP_INSTANCE);
         return resource;
-    }
-
-    public static SmartSenseSubscription smartSenseSubscription() {
-        SmartSenseSubscription smartSenseSubscription = new SmartSenseSubscription();
-        smartSenseSubscription.setSubscriptionId("1234-1234-1234-1244");
-        smartSenseSubscription.setId(1L);
-        return smartSenseSubscription;
     }
 
     public static RDSConfig rdsConfig(DatabaseType databaseType, DatabaseVendor databaseVendor) {
@@ -877,8 +862,8 @@ public class TestUtil {
         notification.setNotification(message);
         notification.setNotificationType(type);
         notification.setCloud(GCP);
-        notification.setClusterDefinitionName("clusterDefinitionName");
-        notification.setClusterDefinitionId(1L);
+        notification.setBlueprintName("blueprintName");
+        notification.setBlueprintId(1L);
         notification.setStackStatus(AVAILABLE.name());
         notification.setNodeCount(1);
         notification.setClusterStatus(AVAILABLE.name());

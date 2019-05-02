@@ -1,6 +1,8 @@
 package com.sequenceiq.cloudbreak.service;
 
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import javax.annotation.Nonnull;
 import javax.inject.Inject;
@@ -10,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 
+import com.google.common.collect.Sets;
 import com.sequenceiq.cloudbreak.controller.exception.BadRequestException;
 import com.sequenceiq.cloudbreak.controller.exception.NotFoundException;
 import com.sequenceiq.cloudbreak.domain.workspace.User;
@@ -22,7 +25,8 @@ import com.sequenceiq.cloudbreak.service.workspace.WorkspaceAwareResourceService
 import com.sequenceiq.cloudbreak.service.workspace.WorkspaceService;
 import com.sequenceiq.cloudbreak.util.ThrowableUtil;
 
-public abstract class AbstractWorkspaceAwareResourceService<T extends WorkspaceAwareResource> implements WorkspaceAwareResourceService<T> {
+public abstract class AbstractWorkspaceAwareResourceService<T extends WorkspaceAwareResource>
+        implements WorkspaceAwareResourceService<T> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AbstractWorkspaceAwareResourceService.class);
 
@@ -67,22 +71,36 @@ public abstract class AbstractWorkspaceAwareResourceService<T extends WorkspaceA
 
     @Override
     public T getByNameForWorkspace(String name, Workspace workspace) {
-        T object = repository().findByNameAndWorkspace(name, workspace);
-        if (object == null) {
+        Optional<T> object = repository().findByNameAndWorkspace(name, workspace);
+        if (object.isEmpty()) {
             throw new NotFoundException(String.format("No %s found with name '%s'", resource().getShortName(), name));
         }
-        MDCBuilder.buildMdcContext(object);
-        return object;
+        MDCBuilder.buildMdcContext(object.get());
+        return object.get();
+    }
+
+    @Override
+    public Set<T> getByNamesForWorkspaceId(Set<String> names, Long workspaceId) {
+        Set<T> results = repository().findByNameInAndWorkspaceId(names, workspaceId);
+        Set<String> notFound = Sets.difference(names,
+                results.stream().map(WorkspaceAwareResource::getName).collect(Collectors.toSet()));
+
+        if (!notFound.isEmpty()) {
+            throw new NotFoundException(String.format("No %s(s) found with name(s) '%s'", resource().getShortName(),
+                    notFound.stream().map(name -> '\'' + name + '\'').collect(Collectors.joining(", "))));
+        }
+
+        return results;
     }
 
     @Override
     public T getByNameForWorkspaceId(String name, Long workspaceId) {
-        T object = repository().findByNameAndWorkspaceId(name, workspaceId);
-        if (object == null) {
+        Optional<T> object = repository().findByNameAndWorkspaceId(name, workspaceId);
+        if (object.isEmpty()) {
             throw new NotFoundException(String.format("No %s found with name '%s'", resource().getShortName(), name));
         }
-        MDCBuilder.buildMdcContext(object);
-        return object;
+        MDCBuilder.buildMdcContext(object.get());
+        return object.get();
     }
 
     @Override
@@ -105,8 +123,21 @@ public abstract class AbstractWorkspaceAwareResourceService<T extends WorkspaceA
     }
 
     @Override
+    public Set<T> delete(Set<T> resources) {
+        return resources.stream()
+                .map(r -> delete(r))
+                .collect(Collectors.toSet());
+    }
+
+    @Override
     public T deleteByNameFromWorkspace(String name, Long workspaceId) {
         T toBeDeleted = getByNameForWorkspaceId(name, workspaceId);
+        return delete(toBeDeleted);
+    }
+
+    @Override
+    public Set<T> deleteMultipleByNameFromWorkspace(Set<String> names, Long workspaceId) {
+        Set<T> toBeDeleted = getByNamesForWorkspaceId(names, workspaceId);
         return delete(toBeDeleted);
     }
 

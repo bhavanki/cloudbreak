@@ -8,7 +8,7 @@ public class FileSystemConfigQueryObject {
 
     private final String storageName;
 
-    private final String clusterDefinitionText;
+    private final String blueprintText;
 
     private final String fileSystemType;
 
@@ -18,14 +18,14 @@ public class FileSystemConfigQueryObject {
 
     private final boolean datalakeCluster;
 
-    private FileSystemConfigQueryObject(FileSystemConfigQueryObject.Builder builder) {
-        this.storageName = builder.storageName;
-        this.clusterName = builder.clusterName;
-        this.clusterDefinitionText = builder.clusterDefinitionText;
-        this.fileSystemType = builder.fileSystemType;
-        this.accountName = builder.accountName;
-        this.attachedCluster = builder.attachedCluster;
-        this.datalakeCluster = builder.datalakeCluster;
+    private FileSystemConfigQueryObject(Builder builder) {
+        storageName = builder.storageName;
+        clusterName = builder.clusterName;
+        blueprintText = builder.blueprintText;
+        fileSystemType = builder.fileSystemType;
+        accountName = builder.accountName;
+        attachedCluster = builder.attachedCluster;
+        datalakeCluster = builder.datalakeCluster;
     }
 
     public String getClusterName() {
@@ -36,8 +36,8 @@ public class FileSystemConfigQueryObject {
         return storageName;
     }
 
-    public String getClusterDefinitionText() {
-        return clusterDefinitionText;
+    public String getBlueprintText() {
+        return blueprintText;
     }
 
     public String getFileSystemType() {
@@ -62,7 +62,7 @@ public class FileSystemConfigQueryObject {
 
         private String storageName;
 
-        private String clusterDefinitionText;
+        private String blueprintText;
 
         private String fileSystemType;
 
@@ -86,8 +86,8 @@ public class FileSystemConfigQueryObject {
             return this;
         }
 
-        public Builder withClusterDefinitionText(String clusterDefinitionText) {
-            this.clusterDefinitionText = clusterDefinitionText;
+        public Builder withBlueprintText(String blueprintText) {
+            this.blueprintText = blueprintText;
             return this;
         }
 

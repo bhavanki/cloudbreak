@@ -1,0 +1,7 @@
+name: "yarn-smoke-tests"
+tests:
+  - name: "YARN smoke tests"
+    classes:
+      - com.sequenceiq.it.cloudbreak.newway.testcase.smoke.YarnSmokeTest
+    packages:
+      - com.sequenceiq.it.cloudbreak.newway.testcase.smoke.yarn.*

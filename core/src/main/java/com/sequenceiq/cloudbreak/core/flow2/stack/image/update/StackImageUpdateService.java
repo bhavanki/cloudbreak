@@ -12,15 +12,16 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.testng.collections.Lists;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.google.common.collect.Lists;
 import com.sequenceiq.cloudbreak.cloud.VersionComparator;
 import com.sequenceiq.cloudbreak.cloud.event.model.EventStatus;
 import com.sequenceiq.cloudbreak.cloud.model.CloudbreakDetails;
 import com.sequenceiq.cloudbreak.cloud.model.Image;
 import com.sequenceiq.cloudbreak.cloud.model.component.StackRepoDetails;
 import com.sequenceiq.cloudbreak.cloud.model.component.StackType;
+import com.sequenceiq.cloudbreak.cluster.service.ClusterComponentConfigProvider;
 import com.sequenceiq.cloudbreak.common.type.ComponentType;
 import com.sequenceiq.cloudbreak.controller.exception.CloudbreakApiException;
 import com.sequenceiq.cloudbreak.core.CloudbreakImageCatalogException;
@@ -30,14 +31,13 @@ import com.sequenceiq.cloudbreak.domain.json.Json;
 import com.sequenceiq.cloudbreak.domain.stack.Component;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceMetaData;
+import com.sequenceiq.cloudbreak.message.CloudbreakMessagesService;
 import com.sequenceiq.cloudbreak.service.CloudbreakServiceException;
-import com.sequenceiq.cloudbreak.service.ClusterComponentConfigProvider;
-import com.sequenceiq.cloudbreak.service.ComponentConfigProvider;
+import com.sequenceiq.cloudbreak.service.ComponentConfigProviderService;
+import com.sequenceiq.cloudbreak.service.OperationException;
 import com.sequenceiq.cloudbreak.service.image.ImageCatalogService;
 import com.sequenceiq.cloudbreak.service.image.ImageService;
 import com.sequenceiq.cloudbreak.service.image.StatedImage;
-import com.sequenceiq.cloudbreak.service.messages.CloudbreakMessagesService;
-import com.sequenceiq.cloudbreak.service.stack.connector.OperationException;
 
 @Service
 public class StackImageUpdateService {
@@ -47,7 +47,7 @@ public class StackImageUpdateService {
     private static final Logger LOGGER = LoggerFactory.getLogger(StackImageUpdateService.class);
 
     @Inject
-    private ComponentConfigProvider componentConfigProvider;
+    private ComponentConfigProviderService componentConfigProviderService;
 
     @Inject
     private ClusterComponentConfigProvider clusterComponentConfigProvider;
@@ -74,7 +74,7 @@ public class StackImageUpdateService {
             throw new CloudbreakServiceException("Failed to create json", e);
         }
 
-        componentConfigProvider.replaceImageComponentWithNew(imageComponent);
+        componentConfigProviderService.replaceImageComponentWithNew(imageComponent);
     }
 
     private Image getImageModelFromStatedImage(Stack stack, StatedImage image) {
@@ -133,7 +133,7 @@ public class StackImageUpdateService {
     }
 
     private Image getCurrentImage(Stack stack) throws CloudbreakImageNotFoundException {
-        return componentConfigProvider.getImage(stack.getId());
+        return componentConfigProviderService.getImage(stack.getId());
     }
 
     private boolean isOsVersionsMatch(Image currentImage, StatedImage newImage) {
@@ -144,16 +144,14 @@ public class StackImageUpdateService {
     private StatedImage getNewImage(String newImageId, String imageCatalogName, String imageCatalogUrl, Image currentImage)
             throws CloudbreakImageNotFoundException, CloudbreakImageCatalogException {
         StatedImage newImage;
-        if (StringUtils.isNotBlank(imageCatalogName) && StringUtils.isNotBlank(imageCatalogUrl)) {
-            newImage = imageCatalogService.getImage(imageCatalogUrl, imageCatalogName, newImageId);
-        } else {
-            newImage = imageCatalogService.getImage(currentImage.getImageCatalogUrl(), currentImage.getImageCatalogName(), newImageId);
-        }
+        newImage = StringUtils.isNotBlank(imageCatalogName) && StringUtils.isNotBlank(imageCatalogUrl)
+                ? imageCatalogService.getImage(imageCatalogUrl, imageCatalogName, newImageId)
+                : imageCatalogService.getImage(currentImage.getImageCatalogUrl(), currentImage.getImageCatalogName(), newImageId);
         return newImage;
     }
 
     public boolean isCbVersionOk(Stack stack) {
-        CloudbreakDetails cloudbreakDetails = componentConfigProvider.getCloudbreakDetails(stack.getId());
+        CloudbreakDetails cloudbreakDetails = componentConfigProviderService.getCloudbreakDetails(stack.getId());
         VersionComparator versionComparator = new VersionComparator();
         String version = StringUtils.substringBefore(cloudbreakDetails.getVersion(), "-");
         int compare = versionComparator.compare(() -> version, () -> MIN_VERSION);

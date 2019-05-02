@@ -56,10 +56,10 @@ import com.microsoft.azure.management.resources.fluentcore.arm.AvailabilityZoneI
 import com.microsoft.azure.management.resources.fluentcore.arm.Region;
 import com.microsoft.azure.management.resources.fluentcore.arm.models.HasId;
 import com.microsoft.azure.management.storage.ProvisioningState;
-import com.microsoft.azure.management.storage.SkuName;
 import com.microsoft.azure.management.storage.StorageAccount;
 import com.microsoft.azure.management.storage.StorageAccount.DefinitionStages.WithCreate;
 import com.microsoft.azure.management.storage.StorageAccountKey;
+import com.microsoft.azure.management.storage.StorageAccountSkuType;
 import com.microsoft.azure.management.storage.StorageAccounts;
 import com.microsoft.azure.storage.CloudStorageAccount;
 import com.microsoft.azure.storage.StorageException;
@@ -87,7 +87,7 @@ public class AzureClient {
 
     public AzureClient(AzureClientCredentials azureClientCredentials) {
         this.azureClientCredentials = azureClientCredentials;
-        this.azure = azureClientCredentials.getAzure();
+        azure = azureClientCredentials.getAzure();
     }
 
     private <T> T handleAuthException(Supplier<T> function) {
@@ -123,7 +123,7 @@ public class AzureClient {
     }
 
     public ResourceGroups getResourceGroups() {
-        return handleAuthException(() -> azure.resourceGroups());
+        return handleAuthException(azure::resourceGroups);
     }
 
     public PagedList<Network> getNetworks() {
@@ -188,11 +188,11 @@ public class AzureClient {
     }
 
     public Deployments getTemplateDeployments(String resourceGroupName) {
-        return handleAuthException(() -> azure.deployments());
+        return handleAuthException(azure::deployments);
     }
 
     public StorageAccounts getStorageAccounts() {
-        return handleAuthException(() -> azure.storageAccounts());
+        return handleAuthException(azure::storageAccounts);
     }
 
     public PagedList<StorageAccount> getStorageAccountsForResourceGroup(String resourceGroup) {
@@ -203,7 +203,7 @@ public class AzureClient {
         handleAuthException(() -> azure.storageAccounts().deleteByResourceGroup(resourceGroup, storageName));
     }
 
-    public StorageAccount createStorageAccount(String resourceGroup, String storageName, String storageLocation, SkuName accType, Boolean encryted,
+    public StorageAccount createStorageAccount(String resourceGroup, String storageName, String storageLocation, StorageAccountSkuType accType, Boolean encryted,
             Map<String, String> tags, Map<String, String> costFollowerTags) {
         Map<String, String> resultTags = new HashMap<>();
         for (Entry<String, String> entry : costFollowerTags.entrySet()) {
@@ -218,7 +218,7 @@ public class AzureClient {
                     .withTags(resultTags)
                     .withSku(accType);
             if (encryted) {
-                withCreate.withEncryption();
+                withCreate.withBlobEncryption();
             }
 
             return withCreate.create();
@@ -310,11 +310,7 @@ public class AzureClient {
     }
 
     public DiskSkuTypes convertAzureDiskTypeToDiskSkuTypes(AzureDiskType diskType) {
-        if (Objects.nonNull(diskType)) {
-            return DiskSkuTypes.fromStorageAccountType(StorageAccountTypes.fromString(diskType.value()));
-        } else {
-            return DiskSkuTypes.STANDARD_LRS;
-        }
+        return Objects.nonNull(diskType) ? DiskSkuTypes.fromStorageAccountType(StorageAccountTypes.fromString(diskType.value())) : DiskSkuTypes.STANDARD_LRS;
     }
 
     public void createContainerInStorage(String resourceGroup, String storageName, String containerName) {
@@ -498,7 +494,7 @@ public class AzureClient {
         return handleAuthException(() -> {
             LOGGER.debug("Create custom image from '{}' with name '{}' into '{}' resource group (Region: {})",
                     fromVhdUri, imageName, resourceGroup, region);
-            if (!azure.resourceGroups().checkExistence(resourceGroup)) {
+            if (!azure.resourceGroups().contain(resourceGroup)) {
                 azure.resourceGroups().define(resourceGroup).withRegion(region).create();
             }
             return azure.virtualMachineCustomImages()
@@ -531,7 +527,7 @@ public class AzureClient {
     }
 
     public NetworkInterfaces getNetworkInterfaces() {
-        return handleAuthException(() -> azure.networkInterfaces());
+        return handleAuthException(azure::networkInterfaces);
     }
 
     public Subnet getSubnetProperties(String resourceGroup, String virtualNetwork, String subnet) {
@@ -626,7 +622,7 @@ public class AzureClient {
     }
 
     public NetworkSecurityGroups getSecurityGroups() {
-        return handleAuthException(() -> azure.networkSecurityGroups());
+        return handleAuthException(azure::networkSecurityGroups);
     }
 
     public LoadBalancer getLoadBalancer(String resourceGroupName, String loadBalancerName) {

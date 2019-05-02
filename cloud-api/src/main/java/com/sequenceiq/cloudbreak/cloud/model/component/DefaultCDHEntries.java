@@ -1,5 +1,6 @@
 package com.sequenceiq.cloudbreak.cloud.model.component;
 
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -12,6 +13,9 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @ConfigurationProperties("cb.cdh")
 @Component
 public class DefaultCDHEntries {
+
+    public static final Comparator<Map.Entry<String, DefaultCDHInfo>> CDH_ENTRY_COMPARATOR =
+            Comparator.comparing(Map.Entry::getKey);
 
     private Map<String, DefaultCDHInfo> entries = new HashMap<>();
 

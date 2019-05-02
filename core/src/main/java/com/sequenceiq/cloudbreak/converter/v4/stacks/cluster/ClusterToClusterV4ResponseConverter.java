@@ -1,6 +1,8 @@
 package com.sequenceiq.cloudbreak.converter.v4.stacks.cluster;
 
 import static com.sequenceiq.cloudbreak.domain.ClusterAttributes.CUSTOM_QUEUE;
+import static com.sequenceiq.cloudbreak.structuredevent.json.AnonymizerUtil.anonymize;
+import static org.apache.commons.lang3.StringUtils.isNotEmpty;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -14,9 +16,12 @@ import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import com.sequenceiq.cloudbreak.api.endpoint.v4.blueprint.responses.BlueprintV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.ResourceStatus;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.common.responses.SecretV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.database.responses.DatabaseV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.kerberos.responses.KerberosV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.ldaps.responses.LdapV4Response;
@@ -31,11 +36,12 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.workspace.responses.WorkspaceRe
 import com.sequenceiq.cloudbreak.api.util.ConverterUtil;
 import com.sequenceiq.cloudbreak.controller.exception.CloudbreakApiException;
 import com.sequenceiq.cloudbreak.converter.AbstractConversionServiceAwareConverter;
+import com.sequenceiq.cloudbreak.converter.v4.stacks.cluster.clouderamanager.ClusterToClouderaManagerV4ResponseConverter;
 import com.sequenceiq.cloudbreak.domain.KerberosConfig;
 import com.sequenceiq.cloudbreak.domain.json.Json;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.service.ServiceEndpointCollector;
-import com.sequenceiq.cloudbreak.service.clusterdefinition.ClusterDefinitionService;
+import com.sequenceiq.cloudbreak.service.blueprint.BlueprintService;
 import com.sequenceiq.cloudbreak.util.StackUtil;
 
 @Component
@@ -54,10 +60,13 @@ public class ClusterToClusterV4ResponseConverter extends AbstractConversionServi
     private ServiceEndpointCollector serviceEndpointCollector;
 
     @Inject
-    private ClusterDefinitionService clusterDefinitionService;
+    private BlueprintService blueprintService;
 
     @Inject
     private ConverterUtil converterUtil;
+
+    @Value("${cb.disable.show.blueprint:false}")
+    private boolean disableShowBlueprint;
 
     @Override
     public ClusterV4Response convert(Cluster source) {
@@ -68,8 +77,8 @@ public class ClusterToClusterV4ResponseConverter extends AbstractConversionServi
         clusterResponse.setStatusReason(source.getStatusReason());
         setUptime(source, clusterResponse);
         clusterResponse.setDescription(source.getDescription() == null ? "" : source.getDescription());
-        if (clusterDefinitionService.isAmbariBlueprint(source.getClusterDefinition())) {
-            String ambariIp = stackUtil.extractAmbariIp(source.getStack());
+        if (blueprintService.isAmbariBlueprint(source.getBlueprint())) {
+            String ambariIp = stackUtil.extractClusterManagerIp(source.getStack());
             Map<String, Collection<ClusterExposedServiceV4Response>> clusterExposedServicesForTopologies =
                     serviceEndpointCollector.prepareClusterExposedServices(source, ambariIp);
             clusterResponse.setExposedServices(clusterExposedServicesForTopologies);
@@ -83,9 +92,16 @@ public class ClusterToClusterV4ResponseConverter extends AbstractConversionServi
         decorateResponseWithProxyConfig(source, clusterResponse);
         clusterResponse.setCloudStorage(getCloudStorage(source));
         clusterResponse.setAmbari(getConversionService().convert(source, AmbariV4Response.class));
+        clusterResponse.setCm(ClusterToClouderaManagerV4ResponseConverter.convert(source));
         clusterResponse.setDatabases(converterUtil.convertAll(source.getRdsConfigs().stream().filter(
                 rds -> ResourceStatus.USER_MANAGED.equals(rds.getStatus())).collect(Collectors.toList()), DatabaseV4Response.class));
         clusterResponse.setWorkspace(getConversionService().convert(source.getWorkspace(), WorkspaceResourceV4Response.class));
+        clusterResponse.setBlueprint(getConversionService().convert(source.getBlueprint(), BlueprintV4Response.class));
+        clusterResponse.setExtendedBlueprintText(getExtendedBlueprintText(source));
+        convertDpSecrets(source, clusterResponse);
+        String ambariIp = stackUtil.extractClusterManagerIp(source.getStack());
+        clusterResponse.setServerIp(ambariIp);
+        clusterResponse.setServerUrl(serviceEndpointCollector.getAmbariServerUrl(source, ambariIp));
         return clusterResponse;
     }
 
@@ -109,6 +125,14 @@ public class ClusterToClusterV4ResponseConverter extends AbstractConversionServi
                 clusterResponse.setCustomQueue("default");
             }
         }
+    }
+
+    private String getExtendedBlueprintText(Cluster source) {
+        if (StringUtils.isNoneEmpty(source.getExtendedBlueprintText()) && !disableShowBlueprint) {
+            String fromVault = source.getExtendedBlueprintText();
+            return anonymize(fromVault);
+        }
+        return null;
     }
 
     private CloudStorageV4Response getCloudStorage(Cluster source) {
@@ -160,6 +184,13 @@ public class ClusterToClusterV4ResponseConverter extends AbstractConversionServi
     private void decorateResponseWithProxyConfig(Cluster source, ClusterV4Response clusterResponse) {
         if (source.getProxyConfig() != null) {
             clusterResponse.setProxy(getConversionService().convert(source.getProxyConfig(), ProxyV4Response.class));
+        }
+    }
+
+    private void convertDpSecrets(Cluster source, ClusterV4Response response) {
+        if (isNotEmpty(source.getDpAmbariUserSecret()) && isNotEmpty(source.getDpAmbariPasswordSecret())) {
+            response.setDpUser(getConversionService().convert(source.getDpAmbariUserSecret(), SecretV4Response.class));
+            response.setDpPassword(getConversionService().convert(source.getDpAmbariPasswordSecret(), SecretV4Response.class));
         }
     }
 }

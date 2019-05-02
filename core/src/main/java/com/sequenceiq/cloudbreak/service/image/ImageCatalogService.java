@@ -139,7 +139,8 @@ public class ImageCatalogService extends AbstractWorkspaceAwareResourceService<I
             List<Image> baseImages = filterImagesByOperatingSystems(rawImages.getBaseImages(), operatingSystems);
             List<Image> hdpImages = filterImagesByOperatingSystems(rawImages.getHdpImages(), operatingSystems);
             List<Image> hdfImages = filterImagesByOperatingSystems(rawImages.getHdfImages(), operatingSystems);
-            images = statedImages(new Images(baseImages, hdpImages, hdfImages, rawImages.getSuppertedVersions()),
+            List<Image> cdhImages = filterImagesByOperatingSystems(rawImages.getCdhImages(), operatingSystems);
+            images = statedImages(new Images(baseImages, hdpImages, hdfImages, cdhImages, rawImages.getSuppertedVersions()),
                     images.getImageCatalogUrl(), images.getImageCatalogName());
         }
         return images;
@@ -173,10 +174,10 @@ public class ImageCatalogService extends AbstractWorkspaceAwareResourceService<I
             }).collect(Collectors.toList());
             selectedImage = getLatestImageDefaultPreferred(matchingVersionImages);
         }
-        if (!selectedImage.isPresent()) {
+        if (selectedImage.isEmpty()) {
             selectedImage = getLatestBaseImageDefaultPreferred(statedImages);
         }
-        if (!selectedImage.isPresent()) {
+        if (selectedImage.isEmpty()) {
             throw new CloudbreakImageNotFoundException(imageNotFoundErrorMessage(platform));
         }
         return statedImage(selectedImage.get(), statedImages.getImageCatalogUrl(), statedImages.getImageCatalogName());
@@ -207,11 +208,11 @@ public class ImageCatalogService extends AbstractWorkspaceAwareResourceService<I
             CloudbreakImageCatalogException {
         Images images = imageCatalogProvider.getImageCatalogV2(catalogUrl).getImages();
         Optional<? extends Image> image = getImage(imageId, images);
-        if (!image.isPresent()) {
+        if (image.isEmpty()) {
             images = imageCatalogProvider.getImageCatalogV2(catalogUrl, true).getImages();
             image = getImage(imageId, images);
         }
-        if (!image.isPresent()) {
+        if (image.isEmpty()) {
             throw new CloudbreakImageNotFoundException(String.format("Could not find any image with id: '%s'.", imageId));
         }
         return statedImage(image.get(), catalogUrl, catalogName);
@@ -230,10 +231,28 @@ public class ImageCatalogService extends AbstractWorkspaceAwareResourceService<I
     }
 
     public ImageCatalog delete(Long workspaceId, String name) {
-        User user = getLoggedInUser();
         if (isEnvDefault(name)) {
             throw new BadRequestException(String.format("%s cannot be deleted because it is an environment default image catalog.", name));
         }
+
+        return deleteNonDefault(workspaceId, name);
+    }
+
+    public Set<ImageCatalog> deleteMultiple(Long workspaceId, Set<String> names) {
+        Set<String> envDefaults = names.stream()
+            .filter(this::isEnvDefault)
+            .collect(Collectors.toSet());
+        if (!envDefaults.isEmpty()) {
+            throw new BadRequestException(String.format("The following image catalogs cannot be deleted because they are environment defaults: %s", names));
+        }
+
+        return names.stream()
+            .map(name -> deleteNonDefault(workspaceId, name))
+            .collect(Collectors.toSet());
+    }
+
+    private ImageCatalog deleteNonDefault(Long workspaceId, String name) {
+        User user = getLoggedInUser();
         ImageCatalog imageCatalog = get(workspaceId, name);
         imageCatalog.setArchived(true);
         setImageCatalogAsDefault(null, user);
@@ -297,16 +316,19 @@ public class ImageCatalogService extends AbstractWorkspaceAwareResourceService<I
     }
 
     private Images emptyImages() {
-        return new Images(emptyList(), emptyList(), emptyList(), emptySet());
+        return new Images(emptyList(), emptyList(), emptyList(), emptyList(), emptySet());
     }
 
     private Optional<? extends Image> getImage(String imageId, Images images) {
         Optional<? extends Image> image = findFirstWithImageId(imageId, images.getBaseImages());
-        if (!image.isPresent()) {
+        if (image.isEmpty()) {
             image = findFirstWithImageId(imageId, images.getHdpImages());
         }
-        if (!image.isPresent()) {
+        if (image.isEmpty()) {
             image = findFirstWithImageId(imageId, images.getHdfImages());
+        }
+        if (image.isEmpty()) {
+            image = findFirstWithImageId(imageId, images.getCdhImages());
         }
         return image;
     }
@@ -344,11 +366,14 @@ public class ImageCatalogService extends AbstractWorkspaceAwareResourceService<I
             List<Image> baseImages = filterImagesByPlatforms(imageFilter.getPlatforms(), imageCatalogV2.getImages().getBaseImages(), vMImageUUIDs);
             List<Image> hdpImages = filterImagesByPlatforms(imageFilter.getPlatforms(), imageCatalogV2.getImages().getHdpImages(), vMImageUUIDs);
             List<Image> hdfImages = filterImagesByPlatforms(imageFilter.getPlatforms(), imageCatalogV2.getImages().getHdfImages(), vMImageUUIDs);
+            List<Image> cdhImages = filterImagesByPlatforms(imageFilter.getPlatforms(), imageCatalogV2.getImages().getCdhImages(), vMImageUUIDs);
 
-            Stream.concat(Stream.concat(baseImages.stream(), hdpImages.stream()), hdfImages.stream()).collect(Collectors.toList())
+            Stream.of(baseImages.stream(), hdpImages.stream(), hdfImages.stream(), cdhImages.stream())
+                    .reduce(Stream::concat)
+                    .orElseGet(Stream::empty)
                     .forEach(img -> img.setDefaultImage(defaultVMImageUUIDs.contains(img.getUuid())));
 
-            images = statedImages(new Images(baseImages, hdpImages, hdfImages, suppertedVersions),
+            images = statedImages(new Images(baseImages, hdpImages, hdfImages, cdhImages, suppertedVersions),
                     imageFilter.getImageCatalog().getImageCatalogUrl(),
                     imageFilter.getImageCatalog().getName());
         } else {
@@ -462,7 +487,7 @@ public class ImageCatalogService extends AbstractWorkspaceAwareResourceService<I
 
         return applicableVersion
                 .map(ver -> cloudbreakVersions.stream().filter(cbVer -> cbVer.getVersions().contains(ver)).collect(Collectors.toSet()))
-                .orElse(Collections.emptySet());
+                .orElse(emptySet());
     }
 
     private Integer accumulateImageCount(Collection<CloudbreakVersion> cloudbreakVersions) {
@@ -520,6 +545,8 @@ public class ImageCatalogService extends AbstractWorkspaceAwareResourceService<I
                 return statedImages.getImages().getHdpImages();
             case "HDF":
                 return statedImages.getImages().getHdfImages();
+            case "CDH":
+                return statedImages.getImages().getCdhImages();
             default:
                 return emptyList();
         }

@@ -8,13 +8,13 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 import com.sequenceiq.it.IntegrationTestContext;
-import com.sequenceiq.it.cloudbreak.newway.AccessConfigEntity;
 import com.sequenceiq.it.cloudbreak.newway.CloudbreakClient;
 import com.sequenceiq.it.cloudbreak.newway.CloudbreakTest;
 import com.sequenceiq.it.cloudbreak.newway.Credential;
 import com.sequenceiq.it.cloudbreak.newway.Entity;
 import com.sequenceiq.it.cloudbreak.newway.PlatformResourceParameters;
 import com.sequenceiq.it.cloudbreak.newway.Region;
+import com.sequenceiq.it.cloudbreak.newway.dto.AccessConfigTestDto;
 import com.sequenceiq.it.cloudbreak.newway.log.Log;
 
 public class AccessConfigV4Action {
@@ -23,7 +23,7 @@ public class AccessConfigV4Action {
     }
 
     public static void post(IntegrationTestContext integrationTestContext, Entity entity) throws IOException {
-        AccessConfigEntity accessConfig = (AccessConfigEntity) entity;
+        AccessConfigTestDto accessConfig = (AccessConfigTestDto) entity;
         CloudbreakClient client = integrationTestContext.getContextParam(CloudbreakClient.CLOUDBREAK_CLIENT, CloudbreakClient.class);
         Long workspaceId = integrationTestContext.getContextParam(CloudbreakTest.WORKSPACE_ID, Long.class);
 

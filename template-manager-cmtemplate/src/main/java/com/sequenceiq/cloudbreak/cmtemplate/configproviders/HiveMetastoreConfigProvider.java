@@ -1,6 +1,7 @@
 package com.sequenceiq.cloudbreak.cmtemplate.configproviders;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,11 +27,12 @@ public class HiveMetastoreConfigProvider implements CmTemplateComponentConfigPro
         result.add(new ApiClusterTemplateConfig().name("hive_metastore_database_host").variable("hive-hive_metastore_database_host"));
         result.add(new ApiClusterTemplateConfig().name("hive_metastore_database_type").variable("hive-hive_metastore_database_type"));
         result.add(new ApiClusterTemplateConfig().name("hive_metastore_database_name").variable("hive-hive_metastore_database_name"));
+        result.add(new ApiClusterTemplateConfig().name("hive_metastore_database_user").variable("hive-hive_metastore_database_user"));
         return result;
     }
 
     @Override
-    public List<ApiClusterTemplateVariable> getVariables(TemplatePreparationObject source) {
+    public List<ApiClusterTemplateVariable> getServiceConfigVariables(TemplatePreparationObject source) {
         List<ApiClusterTemplateVariable> result = new ArrayList<>();
         RdsView hiveView = new RdsView(getFirstRDSConfigOptional(source).get());
         result.add(new ApiClusterTemplateVariable().name("hive-hive_metastore_database_host").value(hiveView.getHost()));
@@ -38,6 +40,7 @@ public class HiveMetastoreConfigProvider implements CmTemplateComponentConfigPro
         result.add(new ApiClusterTemplateVariable().name("hive-hive_metastore_database_name").value(hiveView.getDatabaseName()));
         result.add(new ApiClusterTemplateVariable().name("hive-hive_metastore_database_type").value(hiveView.getSubprotocol()));
         result.add(new ApiClusterTemplateVariable().name("hive-hive_metastore_database_password").value(hiveView.getConnectionPassword()));
+        result.add(new ApiClusterTemplateVariable().name("hive-hive_metastore_database_user").value(hiveView.getConnectionUserName()));
         return result;
     }
 
@@ -47,13 +50,13 @@ public class HiveMetastoreConfigProvider implements CmTemplateComponentConfigPro
     }
 
     @Override
-    public String getRoleType() {
-        return "HIVEMETASTORE";
+    public List<String> getRoleTypes() {
+        return Collections.singletonList("HIVEMETASTORE");
     }
 
     @Override
-    public boolean specialCondition(CmTemplateProcessor cmTemplateProcessor, TemplatePreparationObject source) {
-        return getFirstRDSConfigOptional(source).isPresent() && cmTemplateProcessor.isRoleTypePresentInService(getServiceType(), getRoleType());
+    public boolean isConfigurationNeeded(CmTemplateProcessor cmTemplateProcessor, TemplatePreparationObject source) {
+        return getFirstRDSConfigOptional(source).isPresent() && cmTemplateProcessor.isRoleTypePresentInService(getServiceType(), getRoleTypes());
     }
 
     private Optional<RDSConfig> getFirstRDSConfigOptional(TemplatePreparationObject source) {

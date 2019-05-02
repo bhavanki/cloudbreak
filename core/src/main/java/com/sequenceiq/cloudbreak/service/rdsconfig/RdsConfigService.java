@@ -4,6 +4,7 @@ import static com.sequenceiq.cloudbreak.controller.exception.NotFoundException.n
 
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import javax.inject.Inject;
 import javax.validation.constraints.NotNull;
@@ -13,8 +14,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
-import com.sequenceiq.cloudbreak.api.endpoint.v4.database.base.DatabaseType;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.ResourceStatus;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.database.base.DatabaseType;
 import com.sequenceiq.cloudbreak.authorization.WorkspaceResource;
 import com.sequenceiq.cloudbreak.controller.exception.BadRequestException;
 import com.sequenceiq.cloudbreak.controller.exception.NotFoundException;
@@ -30,7 +31,6 @@ import com.sequenceiq.cloudbreak.service.TransactionService.TransactionExecution
 import com.sequenceiq.cloudbreak.service.TransactionService.TransactionRuntimeExecutionException;
 import com.sequenceiq.cloudbreak.service.cluster.ClusterService;
 import com.sequenceiq.cloudbreak.service.environment.AbstractEnvironmentAwareService;
-import com.sequenceiq.cloudbreak.util.NameUtil;
 
 @Service
 public class RdsConfigService extends AbstractEnvironmentAwareService<RDSConfig> {
@@ -93,8 +93,8 @@ public class RdsConfigService extends AbstractEnvironmentAwareService<RDSConfig>
     }
 
     public RDSConfig createIfNotExists(User user, RDSConfig rdsConfig, Long workspaceId) {
-        RDSConfig configByName = rdsConfigRepository.findByNameAndWorkspaceId(rdsConfig.getName(), workspaceId);
-        if (configByName == null) {
+        Optional<RDSConfig> configByName = rdsConfigRepository.findByNameAndWorkspaceId(rdsConfig.getName(), workspaceId);
+        if (configByName.isEmpty()) {
             Workspace workspace = getWorkspaceService().get(workspaceId, user);
             return create(rdsConfig, workspace, user);
         }
@@ -115,13 +115,10 @@ public class RdsConfigService extends AbstractEnvironmentAwareService<RDSConfig>
     }
 
     public void deleteDefaultRdsConfigs(Set<RDSConfig> rdsConfigs) {
-        rdsConfigs.stream().filter(rdsConfig -> ResourceStatus.DEFAULT == rdsConfig.getStatus()).forEach(this::setStatusToDeleted);
-    }
-
-    private void setStatusToDeleted(RDSConfig rdsConfig) {
-        rdsConfig.setName(NameUtil.postfixWithTimestamp(rdsConfig.getName()));
-        rdsConfig.setStatus(ResourceStatus.DEFAULT_DELETED);
-        rdsConfigRepository.save(rdsConfig);
+        delete(rdsConfigs.stream()
+                .filter(rdsConfig -> ResourceStatus.DEFAULT == rdsConfig.getStatus())
+                .collect(Collectors.toSet())
+        );
     }
 
     public Set<RDSConfig> findAllByWorkspaceId(Long workspaceId) {
@@ -145,20 +142,7 @@ public class RdsConfigService extends AbstractEnvironmentAwareService<RDSConfig>
 
     @Override
     public WorkspaceResource resource() {
-        return WorkspaceResource.RDS;
-    }
-
-    @Override
-    protected void prepareDeletion(RDSConfig rdsConfig) {
-        checkClustersForDeletion(rdsConfig);
-        if (!ResourceStatus.USER_MANAGED.equals(rdsConfig.getStatus())) {
-            setStatusToDeleted(rdsConfig);
-            throw new BadRequestException(String.format("RDS config '%s' is not user managed", rdsConfig.getName()));
-        }
-    }
-
-    @Override
-    protected void prepareCreation(RDSConfig resource) {
+        return WorkspaceResource.DATABASE;
     }
 
     public String testRdsConnection(Long workspaceId, String existingRDSConfigName, RDSConfig existingRds) {
@@ -200,4 +184,5 @@ public class RdsConfigService extends AbstractEnvironmentAwareService<RDSConfig>
         config.setConnectionPassword(password);
         return config;
     }
+
 }

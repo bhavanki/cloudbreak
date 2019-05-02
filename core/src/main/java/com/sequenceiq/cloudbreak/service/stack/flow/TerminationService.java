@@ -1,7 +1,6 @@
 package com.sequenceiq.cloudbreak.service.stack.flow;
 
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 
@@ -18,17 +17,19 @@ import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
 import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceGroup;
 import com.sequenceiq.cloudbreak.domain.stack.instance.InstanceMetaData;
-import com.sequenceiq.cloudbreak.repository.InstanceGroupRepository;
-import com.sequenceiq.cloudbreak.repository.InstanceMetaDataRepository;
-import com.sequenceiq.cloudbreak.service.StackUpdater;
+import com.sequenceiq.cloudbreak.service.Clock;
 import com.sequenceiq.cloudbreak.service.CloudbreakException;
+import com.sequenceiq.cloudbreak.service.StackUpdater;
 import com.sequenceiq.cloudbreak.service.TransactionService;
 import com.sequenceiq.cloudbreak.service.TransactionService.TransactionExecutionException;
 import com.sequenceiq.cloudbreak.service.cluster.flow.ClusterTerminationService;
+import com.sequenceiq.cloudbreak.service.stack.InstanceGroupService;
+import com.sequenceiq.cloudbreak.service.stack.InstanceMetaDataService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
 
 @Service
 public class TerminationService {
+
     private static final Logger LOGGER = LoggerFactory.getLogger(TerminationService.class);
 
     private static final String DELIMITER = "_";
@@ -37,13 +38,13 @@ public class TerminationService {
     private StackService stackService;
 
     @Inject
-    private InstanceGroupRepository instanceGroupRepository;
+    private InstanceGroupService instanceGroupService;
 
     @Inject
     private StackUpdater stackUpdater;
 
     @Inject
-    private InstanceMetaDataRepository instanceMetaDataRepository;
+    private InstanceMetaDataService instanceMetaDataService;
 
     @Inject
     private ClusterTerminationService clusterTerminationService;
@@ -53,6 +54,9 @@ public class TerminationService {
 
     @Inject
     private TransactionService transactionService;
+
+    @Inject
+    private Clock clock;
 
     public void finalizeTermination(Long stackId, boolean force) {
         Stack stack = stackService.getByIdWithListsInTransaction(stackId);
@@ -77,10 +81,8 @@ public class TerminationService {
                     }
                 }
                 stack.setCredential(null);
-                stack.setNetwork(null);
-                stack.setFlexSubscription(null);
-                stack.setEnvironment(null);
                 stack.setName(terminatedName);
+                stack.setTerminated(clock.getCurrentTimeMillis());
                 terminateInstanceGroups(stack);
                 terminateMetaDataInstances(stack);
                 stackService.save(stack);
@@ -97,18 +99,18 @@ public class TerminationService {
         for (InstanceGroup instanceGroup : stack.getInstanceGroups()) {
             instanceGroup.setSecurityGroup(null);
             instanceGroup.setTemplate(null);
-            instanceGroupRepository.save(instanceGroup);
+            instanceGroupService.save(instanceGroup);
         }
     }
 
     private void terminateMetaDataInstances(Stack stack) {
         List<InstanceMetaData> instanceMetaDatas = new ArrayList<>();
         for (InstanceMetaData metaData : stack.getNotDeletedInstanceMetaDataSet()) {
-            long timeInMillis = Calendar.getInstance().getTimeInMillis();
-            metaData.setTerminationDate(timeInMillis);
+            metaData.setTerminationDate(clock.getCurrentTimeMillis());
             metaData.setInstanceStatus(InstanceStatus.TERMINATED);
             instanceMetaDatas.add(metaData);
         }
-        instanceMetaDataRepository.saveAll(instanceMetaDatas);
+        instanceMetaDataService.saveAll(instanceMetaDatas);
     }
+
 }

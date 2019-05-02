@@ -26,20 +26,23 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.base.InstanceGroupType;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.image.ImageSettingsV4Request;
+import com.sequenceiq.cloudbreak.aspect.Measure;
 import com.sequenceiq.cloudbreak.client.PkiUtil;
 import com.sequenceiq.cloudbreak.cloud.PlatformParameters;
 import com.sequenceiq.cloudbreak.cloud.model.AmbariRepo;
+import com.sequenceiq.cloudbreak.cloud.model.ClouderaManagerProduct;
+import com.sequenceiq.cloudbreak.cloud.model.ClouderaManagerRepo;
 import com.sequenceiq.cloudbreak.cloud.model.Image;
 import com.sequenceiq.cloudbreak.cloud.model.Platform;
 import com.sequenceiq.cloudbreak.cloud.model.catalog.StackDetails;
 import com.sequenceiq.cloudbreak.cloud.model.component.ManagementPackComponent;
 import com.sequenceiq.cloudbreak.cloud.model.component.StackRepoDetails;
 import com.sequenceiq.cloudbreak.cloud.model.component.StackType;
-import com.sequenceiq.cloudbreak.clusterdefinition.utils.AmbariBlueprintUtils;
+import com.sequenceiq.cloudbreak.blueprint.utils.BlueprintUtils;
 import com.sequenceiq.cloudbreak.common.type.ComponentType;
 import com.sequenceiq.cloudbreak.core.CloudbreakImageCatalogException;
 import com.sequenceiq.cloudbreak.core.CloudbreakImageNotFoundException;
-import com.sequenceiq.cloudbreak.domain.ClusterDefinition;
+import com.sequenceiq.cloudbreak.domain.Blueprint;
 import com.sequenceiq.cloudbreak.domain.SaltSecurityConfig;
 import com.sequenceiq.cloudbreak.domain.SecurityConfig;
 import com.sequenceiq.cloudbreak.domain.json.Json;
@@ -47,7 +50,7 @@ import com.sequenceiq.cloudbreak.domain.stack.Component;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.domain.workspace.User;
 import com.sequenceiq.cloudbreak.service.CloudbreakServiceException;
-import com.sequenceiq.cloudbreak.service.ComponentConfigProvider;
+import com.sequenceiq.cloudbreak.service.ComponentConfigProviderService;
 import com.sequenceiq.cloudbreak.service.StackMatrixService;
 import com.sequenceiq.cloudbreak.util.JsonUtil;
 
@@ -62,7 +65,7 @@ public class ImageService {
     private UserDataBuilder userDataBuilder;
 
     @Inject
-    private ComponentConfigProvider componentConfigProvider;
+    private ComponentConfigProviderService componentConfigProviderService;
 
     @Inject
     private ImageCatalogService imageCatalogService;
@@ -72,15 +75,16 @@ public class ImageService {
     private ConversionService conversionService;
 
     @Inject
-    private AmbariBlueprintUtils ambariBlueprintUtils;
+    private BlueprintUtils blueprintUtils;
 
     @Inject
     private StackMatrixService stackMatrixService;
 
     public Image getImage(Long stackId) throws CloudbreakImageNotFoundException {
-        return componentConfigProvider.getImage(stackId);
+        return componentConfigProviderService.getImage(stackId);
     }
 
+    @Measure(ImageService.class)
     public void create(Stack stack, String platformString, PlatformParameters params, StatedImage imgFromCatalog)
             throws CloudbreakImageNotFoundException, CloudbreakImageCatalogException {
         try {
@@ -105,26 +109,27 @@ public class ImageService {
                     imgFromCatalog.getImageCatalogUrl(),
                     imgFromCatalog.getImageCatalogName(),
                     imgFromCatalog.getImage().getUuid());
-            componentConfigProvider.store(components);
+            componentConfigProviderService.store(components);
         } catch (JsonProcessingException e) {
             throw new CloudbreakServiceException("Failed to create json", e);
         }
     }
 
     //CHECKSTYLE:OFF
+    @Measure(ImageService.class)
     public StatedImage determineImageFromCatalog(Long workspaceId, ImageSettingsV4Request image, String platformString,
-            ClusterDefinition clusterDefinition, boolean useBaseImage, User user) throws CloudbreakImageNotFoundException, CloudbreakImageCatalogException {
+            Blueprint blueprint, boolean useBaseImage, User user) throws CloudbreakImageNotFoundException, CloudbreakImageCatalogException {
         String clusterType = ImageCatalogService.UNDEFINED;
         String clusterVersion = ImageCatalogService.UNDEFINED;
-        if (clusterDefinition != null) {
+        if (blueprint != null) {
             try {
-                JsonNode root = JsonUtil.readTree(clusterDefinition.getClusterDefinitionText());
-                if (ambariBlueprintUtils.isAmbariBlueprint(clusterDefinition.getClusterDefinitionText())) {
-                    clusterType = ambariBlueprintUtils.getBlueprintStackName(root);
-                    clusterVersion = ambariBlueprintUtils.getBlueprintStackVersion(root);
+                JsonNode root = JsonUtil.readTree(blueprint.getBlueprintText());
+                if (blueprintUtils.isAmbariBlueprint(blueprint.getBlueprintText())) {
+                    clusterType = blueprintUtils.getBlueprintStackName(root);
+                    clusterVersion = blueprintUtils.getBlueprintStackVersion(root);
                 } else {
                     clusterType = "CDH";
-                    clusterVersion = ambariBlueprintUtils.getCDHStackVersion(root);
+                    clusterVersion = blueprintUtils.getCDHStackVersion(root);
                 }
             } catch (IOException ex) {
                 LOGGER.warn("Can not initiate default hdp info: ", ex);
@@ -136,22 +141,19 @@ public class ImageService {
         }
         if (image != null && image.getId() != null) {
             return imageCatalogService.getImageByCatalogName(workspaceId, image.getId(), image.getCatalog());
-        } else {
-            if (useBaseImage) {
-                LOGGER.debug("Image id isn't specified for the stack, falling back to a base image, because repo information is provided");
-                return imageCatalogService.getLatestBaseImageDefaultPreferred(platformString, operatingSystems, user);
-            } else {
-                LOGGER.debug("Image id isn't specified for the stack, falling back to a prewarmed "
-                        + "image of {}-{} or to a base image if prewarmed doesn't exist", clusterType, clusterVersion);
-                return imageCatalogService.getPrewarmImageDefaultPreferred(platformString, clusterType, clusterVersion, operatingSystems, user);
-            }
         }
+        if (useBaseImage) {
+            LOGGER.debug("Image id isn't specified for the stack, falling back to a base image, because repo information is provided");
+            return imageCatalogService.getLatestBaseImageDefaultPreferred(platformString, operatingSystems, user);
+        }
+        LOGGER.debug("Image id isn't specified for the stack, falling back to a prewarmed "
+                + "image of {}-{} or to a base image if prewarmed doesn't exist", clusterType, clusterVersion);
+        return imageCatalogService.getPrewarmImageDefaultPreferred(platformString, clusterType, clusterVersion, operatingSystems, user);
     }
     //CHECKSTYLE:ON
 
     public String determineImageName(String platformString, String region, com.sequenceiq.cloudbreak.cloud.model.catalog.Image imgFromCatalog)
             throws CloudbreakImageNotFoundException {
-        String imageName;
         Optional<Map<String, String>> imagesForPlatform = findStringKeyWithEqualsIgnoreCase(platformString, imgFromCatalog.getImageSetsByProvider());
         if (imagesForPlatform.isPresent()) {
             Map<String, String> imagesByRegion = imagesForPlatform.get();
@@ -160,18 +162,15 @@ public class ImageService {
                 imageNameOpt = findStringKeyWithEqualsIgnoreCase(DEFAULT_REGION, imagesByRegion);
             }
             if (imageNameOpt.isPresent()) {
-                imageName = imageNameOpt.get();
-            } else {
-                String msg = String.format("Virtual machine image couldn't found in image: '%s' for the selected platform: '%s' and region: '%s'.",
-                        imgFromCatalog, platformString, region);
-                throw new CloudbreakImageNotFoundException(msg);
+                return imageNameOpt.get();
             }
-        } else {
-            String msg = String.format("The selected image: '%s' doesn't contain virtual machine image for the selected platform: '%s'.",
-                    imgFromCatalog, platformString);
+            String msg = String.format("Virtual machine image couldn't found in image: '%s' for the selected platform: '%s' and region: '%s'.",
+                    imgFromCatalog, platformString, region);
             throw new CloudbreakImageNotFoundException(msg);
         }
-        return imageName;
+        String msg = String.format("The selected image: '%s' doesn't contain virtual machine image for the selected platform: '%s'.",
+                imgFromCatalog, platformString);
+        throw new CloudbreakImageNotFoundException(msg);
     }
 
     private <T> Optional<T> findStringKeyWithEqualsIgnoreCase(String key, Map<String, T> map) {
@@ -190,24 +189,43 @@ public class ImageService {
         Component imageComponent = new Component(ComponentType.IMAGE, ComponentType.IMAGE.name(), new Json(image), stack);
         components.add(imageComponent);
         if (imgFromCatalog.getStackDetails() != null) {
-            components.add(getAmbariComponent(stack, imgFromCatalog));
             StackDetails stackDetails = imgFromCatalog.getStackDetails();
-            ComponentType componentType = determineStackType(stackDetails).getComponentType();
-            StackRepoDetails repo = createRepo(stackDetails);
-            Component stackRepoComponent = new Component(componentType, componentType.name(), new Json(repo), stack);
+            StackType stackType = determineStackType(stackDetails);
+            Component stackRepoComponent = getStackComponent(stack, stackDetails, stackType, imgFromCatalog.getOsType());
             components.add(stackRepoComponent);
+            components.add(getClusterManagerComponent(stack, imgFromCatalog, stackType));
         }
         return components;
     }
 
-    private Component getAmbariComponent(Stack stack, com.sequenceiq.cloudbreak.cloud.model.catalog.Image imgFromCatalog)
+    private Component getStackComponent(Stack stack, StackDetails stackDetails, StackType stackType, String osType) throws JsonProcessingException {
+        ComponentType componentType = stackType.getComponentType();
+        if (ComponentType.CDH_PRODUCT_DETAILS.equals(componentType)) {
+            ClouderaManagerProduct product = createProductRepo(stackDetails, osType);
+            return new Component(componentType, componentType.name(), new Json(product), stack);
+        } else {
+            StackRepoDetails repo = createStackRepo(stackDetails);
+            return new Component(componentType, componentType.name(), new Json(repo), stack);
+        }
+    }
+
+    private Component getClusterManagerComponent(Stack stack, com.sequenceiq.cloudbreak.cloud.model.catalog.Image imgFromCatalog, StackType stackType)
             throws JsonProcessingException, CloudbreakImageCatalogException {
         if (imgFromCatalog.getRepo() != null) {
-            AmbariRepo ambariRepo = conversionService.convert(imgFromCatalog, AmbariRepo.class);
-            if (ambariRepo.getBaseUrl() == null) {
-                throw new CloudbreakImageCatalogException(String.format("Ambari repo not found in image for os: '%s'.", imgFromCatalog.getOsType()));
+            if (StackType.CDH.equals(stackType)) {
+                ClouderaManagerRepo clouderaManagerRepo = conversionService.convert(imgFromCatalog, ClouderaManagerRepo.class);
+                if (clouderaManagerRepo.getBaseUrl() == null) {
+                    throw new CloudbreakImageCatalogException(
+                            String.format("Cloudera Manager repo was not found in image for os: '%s'.", imgFromCatalog.getOsType()));
+                }
+                return new Component(ComponentType.CM_REPO_DETAILS, ComponentType.CM_REPO_DETAILS.name(), new Json(clouderaManagerRepo), stack);
+            } else {
+                AmbariRepo ambariRepo = conversionService.convert(imgFromCatalog, AmbariRepo.class);
+                if (ambariRepo.getBaseUrl() == null) {
+                    throw new CloudbreakImageCatalogException(String.format("Ambari repo was not found in image for os: '%s'.", imgFromCatalog.getOsType()));
+                }
+                return new Component(ComponentType.AMBARI_REPO_DETAILS, ComponentType.AMBARI_REPO_DETAILS.name(), new Json(ambariRepo), stack);
             }
-            return new Component(ComponentType.AMBARI_REPO_DETAILS, ComponentType.AMBARI_REPO_DETAILS.name(), new Json(ambariRepo), stack);
         } else {
             throw new CloudbreakImageCatalogException(String.format("Invalid Ambari repo present in image catalog: '%s'.", imgFromCatalog.getRepo()));
         }
@@ -224,7 +242,7 @@ public class ImageService {
 
     }
 
-    private StackRepoDetails createRepo(StackDetails stack) {
+    private StackRepoDetails createStackRepo(StackDetails stack) {
         StackRepoDetails repo = new StackRepoDetails();
         repo.setHdpVersion(stack.getVersion());
         repo.setStack(stack.getRepo().getStack());
@@ -241,5 +259,15 @@ public class ImageService {
             repo.getStack().put(StackRepoDetails.MPACK_TAG, stack.getMpackList().get(0).getMpackUrl());
         }
         return repo;
+    }
+
+    private ClouderaManagerProduct createProductRepo(StackDetails stack, String osType) {
+        ClouderaManagerProduct cmProduct = new ClouderaManagerProduct();
+        Map<String, String> stackInfo = stack.getRepo().getStack();
+        cmProduct.
+                withVersion(stackInfo.get(StackRepoDetails.REPOSITORY_VERSION)).
+                withName(stackInfo.get(StackRepoDetails.REPO_ID_TAG).split("-")[0]).
+                withParcel(stackInfo.get(osType));
+        return cmProduct;
     }
 }

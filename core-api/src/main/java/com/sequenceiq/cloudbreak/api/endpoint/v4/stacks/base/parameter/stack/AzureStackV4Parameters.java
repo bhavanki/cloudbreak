@@ -5,6 +5,7 @@ import java.util.Map;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.common.mappable.CloudPlatform;
 
 import io.swagger.annotations.ApiModel;
@@ -12,7 +13,7 @@ import io.swagger.annotations.ApiModelProperty;
 
 @ApiModel
 @JsonIgnoreProperties(ignoreUnknown = true)
-@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonInclude(Include.NON_NULL)
 public class AzureStackV4Parameters extends StackV4ParameterBase {
 
     @ApiModelProperty
@@ -20,9 +21,6 @@ public class AzureStackV4Parameters extends StackV4ParameterBase {
 
     @ApiModelProperty
     private boolean encryptStorage;
-
-    @ApiModelProperty
-    private boolean yarnQueue;
 
     public String getResourceGroupName() {
         return resourceGroupName;
@@ -40,20 +38,11 @@ public class AzureStackV4Parameters extends StackV4ParameterBase {
         this.encryptStorage = encryptStorage;
     }
 
-    public boolean isYarnQueue() {
-        return yarnQueue;
-    }
-
-    public void setYarnQueue(boolean yarnQueue) {
-        this.yarnQueue = yarnQueue;
-    }
-
     @Override
     public Map<String, Object> asMap() {
         Map<String, Object> map = super.asMap();
         putIfValueNotNull(map, "resourceGroupName", resourceGroupName);
         putIfValueNotNull(map, "encryptStorage", encryptStorage);
-        putIfValueNotNull(map, "yarnQueue", yarnQueue);
         return map;
     }
 
@@ -66,8 +55,8 @@ public class AzureStackV4Parameters extends StackV4ParameterBase {
 
     @Override
     public void parse(Map<String, Object> parameters) {
+        super.parse(parameters);
         resourceGroupName = getParameterOrNull(parameters, "resourceGroupName");
         encryptStorage = getBoolean(parameters, "encryptStorage");
-        yarnQueue = getBoolean(parameters, "yarnQueue");
     }
 }

@@ -19,20 +19,27 @@ import java.util.Set;
 
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.springframework.core.convert.ConversionService;
 
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ClusterV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.ambari.AmbariV4Request;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.cm.ClouderaManagerV4Request;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.request.cluster.storage.CloudStorageV4Request;
+import com.sequenceiq.cloudbreak.converter.v4.stacks.cli.cm.ClusterToClouderaManagerV4RequestConverter;
+import com.sequenceiq.cloudbreak.domain.Blueprint;
 import com.sequenceiq.cloudbreak.domain.FileSystem;
 import com.sequenceiq.cloudbreak.domain.LdapConfig;
 import com.sequenceiq.cloudbreak.domain.ProxyConfig;
 import com.sequenceiq.cloudbreak.domain.RDSConfig;
 import com.sequenceiq.cloudbreak.domain.stack.cluster.Cluster;
+import com.sequenceiq.cloudbreak.service.blueprint.BlueprintService;
 
+@RunWith(MockitoJUnitRunner.class)
 public class ClusterToClusterV4RequestConverterTest {
 
     @InjectMocks
@@ -44,18 +51,43 @@ public class ClusterToClusterV4RequestConverterTest {
     @Mock
     private Cluster cluster;
 
+    @Mock
+    private BlueprintService blueprintService;
+
+    @Mock
+    private ClusterToClouderaManagerV4RequestConverter clouderaManagerV4RequestConverter;
+
+    private Blueprint blueprint;
+
     @Before
     public void setUp() {
         MockitoAnnotations.initMocks(this);
+        blueprint = new Blueprint();
+        blueprint.setName("CD Stub");
+
+        when(cluster.getBlueprint()).thenReturn(blueprint);
     }
 
     @Test
-    public void testConvertWhenAmbariConversionSuccessfulThenExpectedAmbariV2RequestShouldPlacedIn() {
+    public void testConvertWhenAmbariConversionSuccessfulThenExpectedAmbariV4RequestShouldPlacedIn() {
+        when(blueprintService.isAmbariBlueprint(blueprint)).thenReturn(Boolean.TRUE);
         AmbariV4Request expected = mock(AmbariV4Request.class);
         when(conversionService.convert(cluster, AmbariV4Request.class)).thenReturn(expected);
 
         ClusterV4Request result = underTest.convert(cluster);
         assertEquals(expected, result.getAmbari());
+        assertNull(result.getCm());
+    }
+
+    @Test
+    public void testConvertWhenClouderaManagerConversionSuccessfulThenExpectedClouderaManagerV4RequestShouldPlacedIn() {
+        when(blueprintService.isAmbariBlueprint(blueprint)).thenReturn(Boolean.FALSE);
+        ClouderaManagerV4Request expected = mock(ClouderaManagerV4Request.class);
+        when(clouderaManagerV4RequestConverter.convert(cluster)).thenReturn(expected);
+
+        ClusterV4Request result = underTest.convert(cluster);
+        assertEquals(expected, result.getCm());
+        assertNull(result.getAmbari());
     }
 
     @Test
